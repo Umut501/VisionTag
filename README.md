@@ -127,3 +127,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Flutter and Dart teams
 - Contributors to the open-source packages used
+
+
+## To do
+- it needs to indicate if it is clean or needs washing in the wardrobe
+- 1 tap reads only basic properties and double tap reads details in the wardrobe
+- 4 items in the wardrobe each at one corner to go to next page scroll
+- 4 items in the update status each at one corner to go to next page scroll
+- 4 items in the remove status each at one corner to go to next page scroll
+- Retail mode divide screen in to two llike the main screen
+- it shouldnt automatically save the clothes to wardrobe should ask to user
