@@ -5,6 +5,7 @@ import 'package:visiontag/providers/clothing_provider.dart';
 import 'package:visiontag/screens/qr-scanner-screen.dart';
 import 'package:visiontag/services/tts_service.dart';
 import 'package:provider/provider.dart';
+import 'package:visiontag/screens/retail_qr_generator_screen.dart';
 
 class RetailModeScreen extends StatefulWidget {
   const RetailModeScreen({Key? key}) : super(key: key);
@@ -46,38 +47,73 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
     );
   }
 
+// In RetailModeScreen's _buildScanPrompt method, add buttons for both scanning and creating
   Widget _buildScanPrompt() {
-    return InkWell(
-      onTap: _scanQrCode,
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: Theme.of(context).colorScheme.surface,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.qr_code_scanner,
-              size: 100,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Tap to Scan Clothing Item',
-              style: Theme.of(context).textTheme.headlineMedium,
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Theme.of(context).colorScheme.surface,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.qr_code_scanner,
+            size: 100,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Retail Mode',
+            style: Theme.of(context).textTheme.headlineMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'Scan existing QR codes or create new ones for clothing items',
+              style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Scan QR codes on clothing items to get detailed information',
-                style: Theme.of(context).textTheme.bodyLarge,
-                textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _scanQrCode,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scan QR Code'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _ttsService.speak("Create new QR code for a clothing item");
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const RetailQRGeneratorScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.qr_code),
+                label: const Text('Create QR Code'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
