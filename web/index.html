@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta name="permissions" content="camera">
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -34,5 +35,25 @@
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      // Register service worker
+      navigator.serviceWorker.register('flutter_service_worker.js');
+    }
+    
+    // Request camera permission when the app is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then(function(stream) {
+            // Permission granted, stop the stream since Flutter will handle it
+            stream.getTracks().forEach(track => track.stop());
+          })
+          .catch(function(error) {
+            console.error('Camera permission denied:', error);
+          });
+      }
+    });
+  </script>
 </body>
 </html>
