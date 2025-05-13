@@ -31,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+// In home_screen.dart, modify the build method
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,9 +39,12 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Home Mode Button (Top Half)
           Expanded(
-            child: InkWell(
+            child: GestureDetector(
               onTap: () {
-                _ttsService.speak("Home Mode selected");
+                _ttsService.speak("Home Mode. Double tap to enter.");
+              },
+              onDoubleTap: () {
+                _ttsService.speak("Opening Home Mode");
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -85,9 +89,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           // Retail Mode Button (Bottom Half)
           Expanded(
-            child: InkWell(
+            child: GestureDetector(
               onTap: () {
-                _ttsService.speak("Retail Mode selected");
+                _ttsService.speak("Retail Mode. Double tap to enter.");
+              },
+              onDoubleTap: () {
+                _ttsService.speak("Opening Retail Mode");
                 Navigator.push(
                   context,
                   MaterialPageRoute(

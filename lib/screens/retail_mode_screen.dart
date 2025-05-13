@@ -46,78 +46,108 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
       body: _scannedItem == null ? _buildScanPrompt() : _buildItemDetails(),
     );
   }
-
-// In RetailModeScreen's _buildScanPrompt method, add buttons for both scanning and creating
-  Widget _buildScanPrompt() {
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      color: Theme.of(context).colorScheme.surface,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.qr_code_scanner,
-            size: 100,
+// In retail_mode_screen.dart, update the _buildScanPrompt method
+// In retail_mode_screen.dart, update the _buildScanPrompt method
+Widget _buildScanPrompt() {
+  return Column(
+    children: [
+      // Scan QR Code (Top Half)
+      Expanded(
+        child: GestureDetector(
+          onTap: () {
+            _ttsService.speak("Scan Item. Double tap to start scanning.");
+          },
+          onDoubleTap: () {
+            _ttsService.speak("Opening scanner");
+            _scanQrCode();
+          },
+          child: Container(
+            width: double.infinity,
             color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Retail Mode',
-            style: Theme.of(context).textTheme.headlineMedium,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'Scan existing QR codes or create new ones for clothing items',
-              style: Theme.of(context).textTheme.bodyLarge,
-              textAlign: TextAlign.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.qr_code_scanner,
+                  size: 80,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Scan Item',
+                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    'Scan QR codes on clothing items',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 32),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _scanQrCode,
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Scan QR Code'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  _ttsService.speak("Create new QR code for a clothing item");
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RetailQRGeneratorScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.qr_code),
-                label: const Text('Create QR Code'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                  foregroundColor: Theme.of(context).colorScheme.onSecondary,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
-    );
-  }
-
+      
+      // Create QR Code (Bottom Half)
+      Expanded(
+        child: GestureDetector(
+          onTap: () {
+            _ttsService.speak("Create QR Code. Double tap to create a new code.");
+          },
+          onDoubleTap: () {
+            _ttsService.speak("Opening QR code creator");
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const RetailQRGeneratorScreen(),
+              ),
+            );
+          },
+          child: Container(
+            width: double.infinity,
+            color: Theme.of(context).colorScheme.secondary,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.qr_code,
+                  size: 80,
+                  color: Theme.of(context).colorScheme.onSecondary,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Create QR Code',
+                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSecondary,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    'Generate QR codes for clothing items',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSecondary,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
   Widget _buildItemDetails() {
     final item = _scannedItem!;
     final discountedPrice = item.discountedPrice;
@@ -386,6 +416,7 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
 
     _ttsService.speak(description);
   }
+// In retail_mode_screen.dart, update the _addToWardrobe method
 
   void _addToWardrobe() {
     if (_scannedItem == null) return;
@@ -399,15 +430,51 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
         const SnackBar(content: Text('This item is already in your wardrobe')),
       );
     } else {
-      // Add new item
-      provider.addItem(_scannedItem!);
-
-      final description = "Added to wardrobe: ${_scannedItem!.name}";
-      _ttsService.speak(description);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Added item to your wardrobe')),
-      );
+      // Ask for confirmation before adding
+      _showAddToWardrobeConfirmation();
     }
+  }
+
+  void _showAddToWardrobeConfirmation() {
+    if (_scannedItem == null) return;
+
+    _ttsService
+        .speak("Do you want to add ${_scannedItem!.name} to your wardrobe?");
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add to Wardrobe'),
+        content:
+            Text('Do you want to add ${_scannedItem!.name} to your wardrobe?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _ttsService.speak("Cancelled adding to wardrobe");
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+
+              // Add item to wardrobe
+              final provider =
+                  Provider.of<ClothingProvider>(context, listen: false);
+              provider.addItem(_scannedItem!);
+
+              final description = "Added to wardrobe: ${_scannedItem!.name}";
+              _ttsService.speak(description);
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Added item to your wardrobe')),
+              );
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 }

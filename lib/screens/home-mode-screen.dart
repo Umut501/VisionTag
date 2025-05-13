@@ -123,41 +123,45 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
       ),
     );
   }
-
-  Widget _buildMenuTile({
-    required BuildContext context,
-    required String title,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 4,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 48,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ],
-          ),
+// In home_mode_screen.dart, update the _buildMenuTile method
+Widget _buildMenuTile({
+  required BuildContext context,
+  required String title,
+  required IconData icon,
+  required VoidCallback onTap,
+}) {
+  return Card(
+    elevation: 4,
+    child: GestureDetector(
+      onTap: () {
+        _ttsService.speak("$title. Double tap to select.");
+      },
+      onDoubleTap: () {
+        _ttsService.speak("Opening $title");
+        onTap();
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 48,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ],
         ),
       ),
-    );
-  }
-
+    ),
+  );
+}
   Future<void> _processScannedItem(BuildContext context, String data) async {
     try {
       final clothingItem = ClothingItem.fromJson(
