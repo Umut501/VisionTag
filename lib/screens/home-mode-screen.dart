@@ -42,13 +42,14 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
         title: const Text('Home Mode'),
         centerTitle: true,
       ),
-      body: GridView.count(
-        crossAxisCount: 2,
-        padding: const EdgeInsets.all(16),
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
+      body: Expanded(
+        child: Column(
         children: [
-          // Scan QR Code
+          Expanded(
+            child: Row(
+            children: [
+              Expanded(
+                child: // Scan QR Code
           _buildMenuTile(
             context: context,
             title: 'Scan Item',
@@ -67,8 +68,10 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
               );
             },
           ),
-
-          // View Wardrobe
+),
+          Expanded(
+            child: 
+            // View Wardrobe
           _buildMenuTile(
             context: context,
             title: 'My Wardrobe',
@@ -83,8 +86,17 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
               );
             },
           ),
-
-          // Mark as Clean/Dirty
+          ),
+            ],
+          ),
+          ),
+          Expanded(
+            child:
+            Row(
+            children: [
+              Expanded(
+                child: 
+                // Clean status
           _buildMenuTile(
             context: context,
             title: 'Update Status',
@@ -102,7 +114,10 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
             },
           ),
 
-          // Remove Item
+),
+          Expanded(
+            child: 
+            // Remove item
           _buildMenuTile(
             context: context,
             title: 'Remove Item',
@@ -119,7 +134,12 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
               );
             },
           ),
+          ),
+            ],
+          ),
+          ),
         ],
+      ),
       ),
     );
   }

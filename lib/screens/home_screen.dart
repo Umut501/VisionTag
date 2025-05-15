@@ -35,10 +35,15 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Vison Tag'),
+        centerTitle: false,
+      ),
       body: Column(
         children: [
           // Home Mode Button (Top Half)
           Expanded(
+            flex: 4,
             child: GestureDetector(
               onTap: () {
                 _ttsService.speak("Home Mode. Double tap to enter.");
@@ -110,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Icon(
                       Icons.shopping_bag,
-                      size: 80,
+                      size: 50,
                       color: Theme.of(context).colorScheme.onSecondary,
                     ),
                     const SizedBox(height: 16),
@@ -118,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Retail Mode',
                       style: Theme.of(context)
                           .textTheme
-                          .displayMedium
+                          .displaySmall
                           ?.copyWith(
                             color: Theme.of(context).colorScheme.onSecondary,
                           ),
