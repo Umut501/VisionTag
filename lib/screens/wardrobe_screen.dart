@@ -29,7 +29,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   final TtsService _ttsService = TtsService();
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  int _itemsPerPage = 4; // Show 4 items per page
+  final int _itemsPerPage = 4; // Show 4 items per page
 
   @override
   void initState() {

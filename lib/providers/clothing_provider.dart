@@ -8,48 +8,53 @@ class ClothingProvider with ChangeNotifier {
 
   List<ClothingItem> get items => [..._items];
 
-  // Constructor - Load items from storage
+  int get totalItems => _items.length;
+
+  int get cleanItemsCount => _items.where((item) => item.isClean).length;
+
+  int get dirtyItemsCount => _items.where((item) => !item.isClean).length;
+
   ClothingProvider() {
     loadItems();
   }
 
-  // Load items from shared preferences
   Future<void> loadItems() async {
     final prefs = await SharedPreferences.getInstance();
     final itemsJson = prefs.getStringList('clothingItems') ?? [];
-    
+
     _items = itemsJson
         .map((item) => ClothingItem.fromJson(jsonDecode(item)))
         .toList();
-    
+
     notifyListeners();
   }
 
-  // Save items to shared preferences
   Future<void> saveItems() async {
     final prefs = await SharedPreferences.getInstance();
-    final itemsJson = _items
-        .map((item) => jsonEncode(item.toJson()))
-        .toList();
-    
+    final itemsJson = _items.map((item) => jsonEncode(item.toJson())).toList();
+
     await prefs.setStringList('clothingItems', itemsJson);
   }
 
-  // Add new item
-  Future<void> addItem(ClothingItem item) async {
+  Future<bool> addItem(ClothingItem item) async {
+    if (_items.any((existingItem) => existingItem.id == item.id)) {
+      return false;
+    }
+
     _items.add(item);
     notifyListeners();
+
     await saveItems();
+
+    return true;
   }
 
-  // Remove item
   Future<void> removeItem(String id) async {
     _items.removeWhere((item) => item.id == id);
     notifyListeners();
     await saveItems();
   }
 
-  // Update item
   Future<void> updateItem(ClothingItem updatedItem) async {
     final index = _items.indexWhere((item) => item.id == updatedItem.id);
     if (index >= 0) {
@@ -59,7 +64,6 @@ class ClothingProvider with ChangeNotifier {
     }
   }
 
-  // Toggle clean status
   Future<void> toggleCleanStatus(String id) async {
     final index = _items.indexWhere((item) => item.id == id);
     if (index >= 0) {
@@ -70,7 +74,6 @@ class ClothingProvider with ChangeNotifier {
     }
   }
 
-  // Get item by ID
   ClothingItem? getItemById(String id) {
     try {
       return _items.firstWhere((item) => item.id == id);
@@ -78,4 +81,4 @@ class ClothingProvider with ChangeNotifier {
       return null;
     }
   }
-}
+} 

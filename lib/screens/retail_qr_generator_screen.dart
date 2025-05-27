@@ -4,7 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:visiontag/models/clothing_item.dart';
 import 'package:visiontag/services/tts_service.dart';
-import 'package:visiontag/utils/qr-generator.dart';
+import 'package:visiontag/utils/qr_generator.dart';
 
 class RetailQRGeneratorScreen extends StatefulWidget {
   const RetailQRGeneratorScreen({Key? key}) : super(key: key);

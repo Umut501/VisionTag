@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:visiontag/models/clothing_item.dart';
-import 'package:visiontag/providers/clothing_provider.dart';
-import 'package:visiontag/screens/qr-scanner-screen.dart';
-import 'package:visiontag/services/tts_service.dart';
 import 'package:provider/provider.dart';
-import 'package:visiontag/screens/retail_qr_generator_screen.dart';
+import '../models/clothing_item.dart';
+import '../providers/clothing_provider.dart';
+import '../screens/qr_scanner_screen.dart';
+import '../screens/retail_qr_generator_screen.dart';
+import '../services/tts_service.dart';
+import '../services/haptic_service.dart';
+import '../models/clothing_item_details.dart';
 
 class RetailModeScreen extends StatefulWidget {
   const RetailModeScreen({Key? key}) : super(key: key);
@@ -26,8 +28,24 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
 
   Future<void> _initializeTts() async {
     await _ttsService.initTts();
+    _ttsService.announceScreen("Retail Mode");
     _ttsService.speak(
-        "Retail Mode. Tap the screen to scan a clothing item in the store.");
+      "Swipe up to scan an item. Swipe down to create a QR code. "
+      "Triple tap for help.",
+    );
+  }
+
+  void _showHelp() {
+    HapticService.tripleTap();
+    _ttsService.speak(
+        "Retail Mode Help. "
+        "Swipe up to scan a clothing item's QR code. "
+        "Swipe down to create a new QR code. "
+        "When viewing an item, swipe left to add to wardrobe, "
+        "swipe right to scan another item. "
+        "Double tap to hear full details. "
+        "Long press to share item details.",
+        priority: SpeechPriority.high);
   }
 
   @override
@@ -42,327 +60,200 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
       appBar: AppBar(
         title: const Text('Retail Mode'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline_rounded),
+            onPressed: _showHelp,
+            tooltip: 'Help',
+          ),
+        ],
       ),
-      body: _scannedItem == null ? _buildScanPrompt() : _buildItemDetails(),
-    );
-  }
-// In retail_mode_screen.dart, update the _buildScanPrompt method
-// In retail_mode_screen.dart, update the _buildScanPrompt method
-Widget _buildScanPrompt() {
-  return Column(
-    children: [
-      // Scan QR Code (Top Half)
-      Expanded(
-        child: GestureDetector(
-          onTap: () {
-            _ttsService.speak("Scan Item. Double tap to start scanning.");
-          },
-          onDoubleTap: () {
-            _ttsService.speak("Opening scanner");
+      body: GestureDetector(
+        onVerticalDragEnd: (details) {
+          if (_scannedItem != null) {
+            return; // Don't handle swipes when item is displayed
+          }
+
+          if (details.primaryVelocity == null) return;
+
+          // Swipe up - scan
+          if (details.primaryVelocity! < -200) {
             _scanQrCode();
-          },
-          child: Container(
-            width: double.infinity,
-            color: Theme.of(context).colorScheme.primary,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.qr_code_scanner,
-                  size: 80,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Scan Item',
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimary,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    'Scan QR codes on clothing items',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      
-      // Create QR Code (Bottom Half)
-      Expanded(
-        child: GestureDetector(
-          onTap: () {
-            _ttsService.speak("Create QR Code. Double tap to create a new code.");
-          },
-          onDoubleTap: () {
-            _ttsService.speak("Opening QR code creator");
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const RetailQRGeneratorScreen(),
-              ),
-            );
-          },
-          child: Container(
-            width: double.infinity,
-            color: Theme.of(context).colorScheme.secondary,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.qr_code,
-                  size: 80,
-                  color: Theme.of(context).colorScheme.onSecondary,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Create QR Code',
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSecondary,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    'Generate QR codes for clothing items',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSecondary,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ],
-  );
-}
-  Widget _buildItemDetails() {
-    final item = _scannedItem!;
-    final discountedPrice = item.discountedPrice;
-    final hasDiscount = item.discount > 0;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with name and add button
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  item.name,
-                  style: Theme.of(context).textTheme.displaySmall,
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _addToWardrobe,
-                icon: const Icon(Icons.add),
-                label: const Text('Add to Wardrobe'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Color sample and info
-          Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color:
-                      Color(int.parse(item.colorHex.replaceAll('#', '0xFF'))),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Color: ${item.color}',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    Text(
-                      'Hex: ${item.colorHex}',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Price information
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Price Information',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Text(
-                        'Original Price: \$${item.price.toStringAsFixed(2)}',
-                        style: hasDiscount
-                            ? const TextStyle(
-                                decoration: TextDecoration.lineThrough,
-                                color: Colors.grey,
-                              )
-                            : Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ],
-                  ),
-                  if (hasDiscount) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          'Discount: ${item.discount.toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Text(
-                          'Final Price: \$${discountedPrice.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Material and details
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Item Details',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDetailRow('Size', item.size),
-                  _buildDetailRow('Material', item.material),
-                  _buildDetailRow('Texture', item.texture),
-                  _buildDetailRow('Manufacturer', item.manufacturer),
-                  _buildDetailRow('Collection', item.collection),
-                  _buildDetailRow('Recyclable', item.recyclable ? 'Yes' : 'No'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Laundry instructions
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Laundry Care Instructions',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  ...item.laundryInstructions.entries.map(
-                    (entry) => _buildDetailRow(entry.key, entry.value),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Action buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                onPressed: _speakItemDetails,
-                icon: const Icon(Icons.volume_up),
-                label: const Text('Read Aloud'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: _scanQrCode,
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('Scan Another'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-        ],
+          }
+          // Swipe down - create QR
+          else if (details.primaryVelocity! > 200) {
+            _createQrCode();
+          }
+        },
+        child: _scannedItem == null ? _buildScanPrompt() : _buildItemDetails(),
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
+  Widget _buildScanPrompt() {
+    return GestureDetector(
+      onTap: () {
+        HapticService.light();
+        _ttsService.speak(
+          "Retail Mode. Swipe up to scan, swipe down to create QR code.",
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          children: [
+            // Scan Section
+            Expanded(
+              child: Semantics(
+                label:
+                    'Scan Item. Swipe up or double tap to scan QR codes on clothing items.',
+                button: true,
+                child: GestureDetector(
+                  onDoubleTap: _scanQrCode,
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.8),
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.qr_code_scanner_rounded,
+                          size: 100,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Scan Item',
+                          style: Theme.of(context)
+                              .textTheme
+                              .displayMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Icon(
+                          Icons.swipe_up_rounded,
+                          size: 40,
+                          color: Colors.white70,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
+
+            // Divider
+            Container(
+              height: 4,
+              color: Theme.of(context).dividerColor,
+            ),
+
+            // Create QR Section
+            Expanded(
+              child: Semantics(
+                label:
+                    'Create QR Code. Swipe down or double tap to generate QR codes for clothing items.',
+                button: true,
+                child: GestureDetector(
+                  onDoubleTap: _createQrCode,
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Theme.of(context)
+                              .colorScheme
+                              .secondary
+                              .withOpacity(0.8),
+                          Theme.of(context).colorScheme.secondary,
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.qr_code_rounded,
+                          size: 100,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Create QR Code',
+                          style: Theme.of(context)
+                              .textTheme
+                              .displayMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Icon(
+                          Icons.swipe_down_rounded,
+                          size: 40,
+                          color: Colors.white70,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItemDetails() {
+    if (_scannedItem == null) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity == null) return;
+
+        // Swipe left - add to wardrobe
+        if (details.primaryVelocity! < -200) {
+          _addToWardrobe();
+        }
+        // Swipe right - scan another
+        else if (details.primaryVelocity! > 200) {
+          _scanAnother();
+        }
+      },
+      child: ClothingItemDetails(
+        item: _scannedItem!,
+        onAddToWardrobe: _addToWardrobe,
+        onScanAnother: _scanAnother,
+        onShare: _shareItem,
       ),
     );
   }
 
   Future<void> _scanQrCode() async {
+    HapticService.selection();
+    _ttsService.speak("Opening scanner", priority: SpeechPriority.high);
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -375,6 +266,18 @@ Widget _buildScanPrompt() {
     );
   }
 
+  void _createQrCode() {
+    HapticService.selection();
+    _ttsService.speak("Opening QR code creator", priority: SpeechPriority.high);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const RetailQRGeneratorScreen(),
+      ),
+    );
+  }
+
   void _processScannedItem(String data) {
     try {
       final itemData = json.decode(data);
@@ -383,40 +286,21 @@ Widget _buildScanPrompt() {
           Map<String, dynamic>.from(itemData),
         );
       });
-      _speakItemDetails();
+
+      HapticService.success();
+      _ttsService.speak(
+        "Item scanned successfully. ${_scannedItem!.accessibilityDescription}",
+        priority: SpeechPriority.high,
+      );
     } catch (e) {
-      _ttsService.speak("Invalid QR code. Please try again");
+      HapticService.error();
+      _ttsService.announceError("Invalid QR code. Please try again");
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Invalid QR code format')),
       );
     }
   }
-
-  void _speakItemDetails() {
-    if (_scannedItem == null) return;
-
-    final item = _scannedItem!;
-    final hasDiscount = item.discount > 0;
-    final priceText = hasDiscount
-        ? "Original price: ${item.price} dollars, with ${item.discount}% discount. Final price: ${item.discountedPrice.toStringAsFixed(2)} dollars"
-        : "Price: ${item.price} dollars";
-
-    final description = """
-      Item: ${item.name}.
-      Color: ${item.color}.
-      Size: ${item.size}.
-      Material: ${item.material}.
-      Texture: ${item.texture}.
-      $priceText.
-      Manufacturer: ${item.manufacturer}.
-      Collection: ${item.collection}.
-      ${item.recyclable ? 'This item is recyclable.' : ''}
-      Laundry instructions: ${item.laundryInstructions.entries.map((e) => "${e.key}: ${e.value}").join('. ')}.
-    """;
-
-    _ttsService.speak(description);
-  }
-// In retail_mode_screen.dart, update the _addToWardrobe method
 
   void _addToWardrobe() {
     if (_scannedItem == null) return;
@@ -424,13 +308,16 @@ Widget _buildScanPrompt() {
     final provider = Provider.of<ClothingProvider>(context, listen: false);
 
     if (provider.getItemById(_scannedItem!.id) != null) {
-      // Item already exists
-      _ttsService.speak("This item is already in your wardrobe");
+      HapticService.warning();
+      _ttsService.speak(
+        "This item is already in your wardrobe",
+        priority: SpeechPriority.high,
+      );
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This item is already in your wardrobe')),
+        const SnackBar(content: Text('Item already in wardrobe')),
       );
     } else {
-      // Ask for confirmation before adding
       _showAddToWardrobeConfirmation();
     }
   }
@@ -438,43 +325,101 @@ Widget _buildScanPrompt() {
   void _showAddToWardrobeConfirmation() {
     if (_scannedItem == null) return;
 
-    _ttsService
-        .speak("Do you want to add ${_scannedItem!.name} to your wardrobe?");
+    HapticService.medium();
+    _ttsService.speak(
+      "Add ${_scannedItem!.name} to wardrobe? "
+      "Swipe up for yes, swipe down for no.",
+      priority: SpeechPriority.high,
+    );
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add to Wardrobe'),
-        content:
-            Text('Do you want to add ${_scannedItem!.name} to your wardrobe?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _ttsService.speak("Cancelled adding to wardrobe");
-            },
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
+      builder: (context) => GestureDetector(
+        onVerticalDragEnd: (details) {
+          if (details.primaryVelocity == null) return;
 
-              // Add item to wardrobe
-              final provider =
-                  Provider.of<ClothingProvider>(context, listen: false);
-              provider.addItem(_scannedItem!);
-
-              final description = "Added to wardrobe: ${_scannedItem!.name}";
-              _ttsService.speak(description);
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Added item to your wardrobe')),
-              );
-            },
-            child: const Text('Add'),
-          ),
-        ],
+          // Swipe up - Yes
+          if (details.primaryVelocity! < -200) {
+            Navigator.pop(context);
+            _confirmAddToWardrobe();
+          }
+          // Swipe down - No
+          else if (details.primaryVelocity! > 200) {
+            Navigator.pop(context);
+            HapticService.light();
+            _ttsService.speak("Cancelled", priority: SpeechPriority.high);
+          }
+        },
+        child: AlertDialog(
+          title: const Text('Add to Wardrobe'),
+          content: Text('Add ${_scannedItem!.name} to your wardrobe?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                HapticService.light();
+                _ttsService.speak("Cancelled", priority: SpeechPriority.high);
+              },
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _confirmAddToWardrobe();
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  void _confirmAddToWardrobe() async {
+    final provider = Provider.of<ClothingProvider>(context, listen: false);
+    final success = await provider.addItem(_scannedItem!);
+
+    if (success) {
+      HapticService.success();
+      _ttsService.speak(
+        "Success! ${_scannedItem!.name} added to wardrobe",
+        priority: SpeechPriority.high,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Added to wardrobe')),
+      );
+
+      // Clear the scanned item after adding
+      setState(() {
+        _scannedItem = null;
+      });
+    }
+  }
+
+  void _scanAnother() {
+    HapticService.swipe();
+    setState(() {
+      _scannedItem = null;
+    });
+    _ttsService.speak(
+      "Ready to scan another item",
+      priority: SpeechPriority.high,
+    );
+  }
+
+  void _shareItem() {
+    if (_scannedItem == null) return;
+
+    HapticService.selection();
+    _ttsService.speak(
+      "Sharing ${_scannedItem!.name} details",
+      priority: SpeechPriority.high,
+    );
+
+    // In a real app, implement sharing functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sharing feature coming soon')),
     );
   }
 }

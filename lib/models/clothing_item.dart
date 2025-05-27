@@ -12,7 +12,7 @@ class ClothingItem {
   final Map<String, String> laundryInstructions;
   final String manufacturer;
   final String collection;
-  bool isClean;
+  final bool isClean;
 
   ClothingItem({
     required this.id,
@@ -31,7 +31,6 @@ class ClothingItem {
     this.isClean = true,
   });
 
-  // Create item from QR code data (JSON)
   factory ClothingItem.fromJson(Map<String, dynamic> json) {
     return ClothingItem(
       id: json['id'],
@@ -40,18 +39,18 @@ class ClothingItem {
       colorHex: json['colorHex'],
       size: json['size'],
       texture: json['texture'],
-      price: json['price'].toDouble(),
-      discount: json['discount']?.toDouble() ?? 0.0,
+      price: (json['price'] as num).toDouble(),
+      discount: (json['discount'] ?? 0).toDouble(),
       material: json['material'],
       recyclable: json['recyclable'] ?? false,
-      laundryInstructions: Map<String, String>.from(json['laundryInstructions']),
+      laundryInstructions:
+          Map<String, String>.from(json['laundryInstructions']),
       manufacturer: json['manufacturer'],
       collection: json['collection'],
       isClean: json['isClean'] ?? true,
     );
   }
 
-  // Convert to JSON for QR code generation and storage
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -71,12 +70,8 @@ class ClothingItem {
     };
   }
 
-  // Get discounted price
-  double get discountedPrice {
-    return price - (price * discount / 100);
-  }
+  double get discountedPrice => price - (price * discount / 100);
 
-  // Toggle clean status
   ClothingItem toggleCleanStatus() {
     return ClothingItem(
       id: id,
@@ -94,5 +89,35 @@ class ClothingItem {
       collection: collection,
       isClean: !isClean,
     );
+  }
+
+  /// TTS için detaylı açıklama
+  String get accessibilityDescription {
+    final buffer = StringBuffer();
+
+    buffer.write("$name in $color color, size $size. ");
+    buffer.write("Made of $material with a $texture texture. ");
+    buffer.write(isClean ? "It is clean. " : "It needs to be washed. ");
+    if (discount > 0) {
+      buffer.write(
+          "Price: ${discountedPrice.toStringAsFixed(2)} dollars after a ${discount.toInt()} percent discount. ");
+    } else {
+      buffer.write("Price: ${price.toStringAsFixed(2)} dollars. ");
+    }
+    if (recyclable) {
+      buffer.write("This item is recyclable. ");
+    }
+    buffer.write("From the $collection collection by $manufacturer.");
+
+    return buffer.toString();
+  }
+
+  /// Kısa açıklama - TTS veya liste gösterimi için ideal
+  String get briefDescription {
+    String base = "$name, size $size, color $color";
+    if (base.length > 50) {
+      return "${base.substring(0, 47)}...";
+    }
+    return base;
   }
 }
