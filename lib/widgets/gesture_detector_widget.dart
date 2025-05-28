@@ -54,7 +54,7 @@ class _GestureDetectorWidgetState extends State<GestureDetectorWidget> {
   // Shake detection
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   DateTime? _lastShakeTime;
-  final double _shakeThreshold = 15.0;
+  final double _shakeThreshold = 20.0;  // change to adjust shake sensitivity
 
   @override
   void initState() {
@@ -76,7 +76,7 @@ class _GestureDetectorWidgetState extends State<GestureDetectorWidget> {
       if (acceleration > _shakeThreshold) {
         final now = DateTime.now();
         if (_lastShakeTime == null ||
-            now.difference(_lastShakeTime!).inMilliseconds > 500) {
+            now.difference(_lastShakeTime!).inMilliseconds > 1000) {
           _lastShakeTime = now;
           widget.onShake?.call();
           provider.triggerHaptic(type: HapticType.impact);
@@ -162,22 +162,36 @@ class _GestureDetectorWidgetState extends State<GestureDetectorWidget> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _handleTap,
-      onLongPress: _handleLongPress,
-      onPanStart: _handlePanStart,
-      onPanUpdate: _handlePanUpdate,
-      onScaleUpdate: (details) {
-        // Detect two-finger double tap
-        if (details.pointerCount == 2 && widget.onDoubleTapTwoFingers != null) {
-          final provider = context.read<GestureProvider>();
-          if (provider.enableDoubleTapBack) {
-            widget.onDoubleTapTwoFingers!.call();
-            provider.triggerHaptic(type: HapticType.impact);
-          }
-        }
-      },
-      child: widget.child,
-    );
+  onTap: _handleTap,
+  onLongPress: _handleLongPress,
+  onScaleStart: (details) {
+    // Handle the start of scaling/panning
+    _handlePanStart(DragStartDetails(
+      globalPosition: details.focalPoint,
+      localPosition: details.localFocalPoint,
+    ));
+  },
+  onScaleUpdate: (details) {
+    // Handle two-finger double tap
+    if (details.pointerCount == 2 && widget.onDoubleTapTwoFingers != null) {
+      final provider = context.read<GestureProvider>();
+      if (provider.enableDoubleTapBack) {
+        widget.onDoubleTapTwoFingers!.call();
+        provider.triggerHaptic(type: HapticType.impact);
+      }
+    }
+    
+    // Handle pan updates (single finger drag)
+    if (details.pointerCount == 1) {
+      _handlePanUpdate(DragUpdateDetails(
+        globalPosition: details.focalPoint,
+        localPosition: details.localFocalPoint,
+        delta: details.focalPointDelta,
+      ));
+    }
+  },
+  child: widget.child,
+);
   }
 
   @override

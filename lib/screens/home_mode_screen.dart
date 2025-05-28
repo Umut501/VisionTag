@@ -130,13 +130,13 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
             "left to update status, right to remove items. Double tap to generate QR codes.",
         child: Consumer<ClothingProvider>(
           builder: (context, provider, child) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Statistics Card
-                  Card(
+            return Padding(
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+                  // Statistics Card -> Removed because user cannot read the text
+                  /*Card(
                     elevation: 4,
                     child: Padding(
                       padding: const EdgeInsets.all(20),
@@ -173,31 +173,27 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
                         ],
                       ),
                     ),
-                  ),
+                  ),*/
 
-                  const SizedBox(height: 24),
+                  
 
-                  // Quick Actions
-                  Text(
+                  // Quick Actions -> removed: serves no purpose
+                  /*Text(
                     'Quick Actions',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 16),*/
 
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    children: [
-                      _buildActionCard(
+                  //Container(color: Colors.red.withValues(), child:
+
+                  Expanded(flex: 1, child: Row(children: [
+                    _buildActionCard(
                         context,
                         'View Wardrobe',
                         'See all your items',
                         Icons.visibility,
                         _navigateToWardrobe,
-                        "Swipe up gesture",
+                        "", // Gesture hint removed as user cannot read the text
                       ),
                       _buildActionCard(
                         context,
@@ -205,15 +201,17 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
                         'Add new clothing item',
                         Icons.qr_code_scanner,
                         _navigateToScanner,
-                        "Swipe down gesture",
-                      ),
-                      _buildActionCard(
+                        "",
+                      ),],)),
+
+                      Expanded(flex: 1, child: Row(children: [
+                        _buildActionCard(
                         context,
                         'Update Status',
                         'Mark items clean or dirty',
                         Icons.update,
                         _navigateToUpdateStatus,
-                        "Swipe left gesture",
+                        "",
                       ),
                       _buildActionCard(
                         context,
@@ -221,15 +219,12 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
                         'Delete items from wardrobe',
                         Icons.delete,
                         _navigateToRemoveItems,
-                        "Swipe right gesture",
-                      ),
-                    ],
-                  ),
+                        "",
+                      ),],)),
+                  
 
-                  const SizedBox(height: 24),
-
-                  // Generate QR Code Button
-                  Center(
+                  // Generate QR Code Button -> removed: user should not be able to generate QR codes
+                  /*Center(
                     child: ElevatedButton.icon(
                       onPressed: _navigateToQRGenerator,
                       icon: const Icon(Icons.qr_code),
@@ -241,12 +236,12 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
                         ),
                       ),
                     ),
-                  ),
+                  ),*/
 
-                  const SizedBox(height: 24),
+                  
 
                   // Help Text
-                  Container(
+                  /*Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
@@ -265,7 +260,7 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
                       '• Long press: Hear statistics',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                  ),
+                  ),*/  //removed because user cannot read the text
                 ],
               ),
             );
@@ -315,7 +310,7 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
     VoidCallback onTap,
     String gestureHint,
   ) {
-    return Card(
+    return Expanded(child: Card(
       elevation: 2,
       child: InkWell(
         onTap: () {
@@ -324,7 +319,7 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -355,10 +350,10 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
                 textAlign: TextAlign.center,
               ),
             ],
-          ),
+          )
         ),
       ),
-    );
+    ));
   }
 
   @override

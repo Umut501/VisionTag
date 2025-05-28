@@ -31,7 +31,8 @@ class TtsService {
     }
 
     List<dynamic>? voices = await _flutterTts.getVoices;
-    if (voices != null) {
+    if (voices != null)
+    {
       for (var voice in voices) {
         if (voice is Map && voice['name'] != null) {
           String voiceName = voice['name'].toString().toLowerCase();
@@ -47,7 +48,7 @@ class TtsService {
         }
       }
     }
-
+  
     _flutterTts.setCompletionHandler(() {
       // Completion callback
     });
@@ -80,7 +81,14 @@ class TtsService {
 
   Future<void> repeatLastSpoken() async {
     if (_lastSpokenText.isNotEmpty) {
-      await speak("Repeating. $_lastSpokenText", priority: SpeechPriority.high);
+      if(_lastSpokenText.substring(0, 10)=="Repeating.")
+      {
+        _lastSpokenText = _lastSpokenText.substring(10).trim();
+        await speak("Repeating. $_lastSpokenText", priority: SpeechPriority.high);
+      } else{
+        await speak("Repeating. $_lastSpokenText", priority: SpeechPriority.high);
+      }
+      
     } else {
       await speak("Nothing to repeat", priority: SpeechPriority.high);
     }

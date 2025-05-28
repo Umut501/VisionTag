@@ -140,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               "Home Mode selected. Double tap again to enter.");
                         }
                       },
-                      child: Container(
+                      child: SizedBox(
                         width: double.infinity,
                         child: Center(
                           child: Column(
@@ -265,7 +265,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               "Retail Mode selected. Double tap again to enter.");
                         }
                       },
-                      child: Container(
+                      child: SizedBox(
                         width: double.infinity,
                         child: Center(
                           child: Column(
