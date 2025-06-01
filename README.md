@@ -164,7 +164,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Add navigation gestures to landing screen.
 - Read out field names, create retail qr code.
 
-##  Gestures 
+## Gestures 
 - Swipe left to go back
 - Swipe right to go forward
 - Single tap to read out selected
