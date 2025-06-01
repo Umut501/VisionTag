@@ -138,6 +138,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
 
                     // Create a grid layout with 4 items (2x2)
                     return GridView.count(
+                      scrollDirection: Axis.horizontal,
                       crossAxisCount: 2,
                       padding: const EdgeInsets.all(16),
                       mainAxisSpacing: 16,

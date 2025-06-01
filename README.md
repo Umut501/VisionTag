@@ -137,3 +137,43 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - 4 items in the remove status each at one corner to go to next page scroll
 - Retail mode divide screen in to two llike the main screen
 - it shouldnt automatically save the clothes to wardrobe should ask to user
+
+##  More to
+## Feedback
+- Read out selected modes
+
+## Multiple mode of output
+- Supports speech, text and icons
+
+
+## Homepage
+- Speech: explicitly state tell the user how many modes are available, and which one is currently selected.
+- Pinch to close the application.
+- Remove swipe gestures from the home mode. Click once to read out selected, double tap to open.
+- My wardrobe, read: current page number, item count on page, total count for both items and pages.
+- Remove camera selfie camera option.
+- When scanning for qr code: provide hints; qr code not found, how to close “swipe left maybe”.
+- Go to previous opage gesture
+- Assign icons to items in the wardrobe and remove item screens.
+- Status can only be changed when item is selected.
+- Confirm deletion, single tap select, double tap delete, and double tap again to confirm, cancel swipe left.
+
+## Retail mode
+- Triple tap doesn’t work, remove.
+- Add navigation gestures to landing screen.
+- Read out field names, create retail qr code.
+
+##  Gestures 
+- Swipe left to go back
+- Swipe right to go forward
+- Single tap to read out selected
+- Double tap to open
+- Hold help
+- Shake repeat previous
+
+## NB for the presentation.
+- Retail mode qr code creation is designed for slightly visually impaired or not impaired at all.
+
+## Future work: 
+- Make camera light aware so it will open the flash automatically if its dark.
+- Make it adaptable: assign own gesture.
