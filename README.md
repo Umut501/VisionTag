@@ -130,13 +130,14 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 
 ## To do
-- it needs to indicate if it is clean or needs washing in the wardrobe
-- 1 tap reads only basic properties and double tap reads details in the wardrobe
-- 4 items in the wardrobe each at one corner to go to next page scroll
-- 4 items in the update status each at one corner to go to next page scroll
-- 4 items in the remove status each at one corner to go to next page scroll
-- Retail mode divide screen in to two llike the main screen
+- it needs to indicate if it is clean or needs washing in the wardrobe -done
+- 1 tap reads only basic properties and double tap reads details in the wardrobe -done
+- 4 items in the wardrobe each at one corner to go to next page scroll - done
+- 4 items in the update status each at one corner to go to next page scroll - needs to fill screen
+- 4 items in the remove status each at one corner to go to next page scroll - needs to fill screen
+- Retail mode divide screen in to two llike the main screen - done
 - it shouldnt automatically save the clothes to wardrobe should ask to user
+- copy add item from qr code to home page same as retail mode.
 
 ##  More to
 ## Feedback
