@@ -95,7 +95,7 @@ class ClothingItem {
   String get accessibilityDescription {
     final buffer = StringBuffer();
 
-    buffer.write("$name in $color color, size $size. ");
+    buffer.write("Color $color , size $size. ");
     buffer.write("Made of $material with a $texture texture. ");
     buffer.write(isClean ? "It is clean. " : "It needs to be washed. ");
     if (discount > 0) {
@@ -107,7 +107,7 @@ class ClothingItem {
     if (recyclable) {
       buffer.write("This item is recyclable. ");
     }
-    buffer.write("From the $collection collection by $manufacturer.");
+    buffer.write("From the $collection collection by $manufacturer. End of description.");
 
     return buffer.toString();
   }

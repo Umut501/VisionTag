@@ -130,18 +130,23 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 
 ## To do
+- 2 items in the update status each covers half of the one at bottom one at top side - needs to fill screen
+- 2 items in the remove status each covers half of the one at bottom one at top side - needs to fill screen
+- 2 items in the wardrobe each covers half of the one at bottom one at top side - needs to fill screen
+- Copy "add item" functionality from qr code to wardrobe same as retail mode, they should be basically the same.
+
 - it needs to indicate if it is clean or needs washing in the wardrobe -done
 - 1 tap reads only basic properties and double tap reads details in the wardrobe -done
 - 4 items in the wardrobe each at one corner to go to next page scroll - done
-- 4 items in the update status each at one corner to go to next page scroll - needs to fill screen
-- 4 items in the remove status each at one corner to go to next page scroll - needs to fill screen
 - Retail mode divide screen in to two llike the main screen - done
-- it shouldnt automatically save the clothes to wardrobe should ask to user
-- copy add item from qr code to home page same as retail mode.
 
-##  More to
+- it shouldnt automatically save the clothes to wardrobe should ask to user
+
+
+
+##  More to do
 ## Feedback
-- Read out selected modes
+- 
 
 ## Multiple mode of output
 - Supports speech, text and icons

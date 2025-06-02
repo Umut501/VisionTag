@@ -1,4 +1,3 @@
-// home_mode_screen.dart - CORRECTED VERSION
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:visiontag/providers/clothing_provider.dart';
