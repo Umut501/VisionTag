@@ -1,11 +1,12 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:visiontag/providers/clothing_provider.dart';
 import 'package:visiontag/screens/wardrobe_screen.dart';
 import 'package:visiontag/screens/qr_scanner_screen.dart';
-import 'package:visiontag/screens/generate_qr_screen.dart';
 import 'package:visiontag/services/tts_service.dart';
-import 'package:visiontag/widgets/gesture_detector_widget.dart';
+import 'package:visiontag/services/haptic_service.dart';
+import 'dart:io';
+import 'package:sensors_plus/sensors_plus.dart';
 
 class HomeModeScreen extends StatefulWidget {
   const HomeModeScreen({Key? key}) : super(key: key);
@@ -14,98 +15,140 @@ class HomeModeScreen extends StatefulWidget {
   State<HomeModeScreen> createState() => _HomeModeScreenState();
 }
 
-class _HomeModeScreenState extends State<HomeModeScreen> {
+class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObserver {
   final TtsService _ttsService = TtsService();
+  int _selectedIndex = 0; // 0: Wardrobe, 1: Scan Item
+  Offset? _startFocalPoint;
+  double _initialScale = 1.0;
+  StreamSubscription? _accelerometerSubscription;
+  DateTime? _lastShakeTime;
+  final double _shakeThreshold = 15.0;
+  bool _hasReturnedFromSubScreen = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeTts();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _announceCurrentSelection());
+    _initShakeDetection();
   }
 
-  Future<void> _initializeTts() async {
-    await _ttsService.initTts();
-
-    final provider = context.read<ClothingProvider>();
-    final itemCount = provider.totalItems;
-    final cleanCount = provider.cleanItemsCount;
-    final dirtyCount = provider.dirtyItemsCount;
-
-    _ttsService.speak(
-      "Home Mode. You have $itemCount items in your wardrobe. "
-      "$cleanCount clean items and $dirtyCount items need washing. "
-      "Swipe up to view wardrobe, swipe down to scan item, swipe left to update status, "
-      "swipe right to remove items, or double tap to generate QR code.",
-      priority: SpeechPriority.high,
-    );
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _accelerometerSubscription?.cancel();
+    _ttsService.dispose();
+    super.dispose();
   }
 
-  void _navigateToWardrobe() {
-    _ttsService.speak("Opening wardrobe", priority: SpeechPriority.high);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const WardrobeScreen(mode: WardrobeMode.view),
-      ),
-    );
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && _hasReturnedFromSubScreen) {
+      // We've returned from a sub-screen
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _announceReturnToHomeMode();
+        _hasReturnedFromSubScreen = false;
+      });
+    }
   }
 
-  void _navigateToScanner() {
-    _ttsService.speak("Opening scanner", priority: SpeechPriority.high);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QRScannerScreen(
-          onScan: (data) {
-            // Handle scanned data - you might want to process and add to wardrobe
-            Navigator.pop(context);
-            _ttsService.speak("Item scanned successfully");
-          },
+  void _initShakeDetection() {
+    _accelerometerSubscription = accelerometerEvents.listen((event) {
+      // enableShakeToRepeat kontrolü
+      // Eğer GestureProvider kullanıyorsan:
+      // final provider = Provider.of<GestureProvider>(context, listen: false);
+      // if (!provider.enableShakeToRepeat) return;
+
+      double acceleration = sqrt(event.x * event.x + event.y * event.y + event.z * event.z) - 9.81; // Normalize to remove gravity effect
+      if (acceleration > _shakeThreshold) {
+        final now = DateTime.now();
+        if (_lastShakeTime == null || now.difference(_lastShakeTime!).inMilliseconds > 1200) {
+          _lastShakeTime = now;
+          HapticService.medium(); // Haptic feedback for shake detection
+          _showHelp();
+        }
+      }
+    });
+  }
+
+  void _announceCurrentSelection() {
+    if (_hasReturnedFromSubScreen) {
+      _announceReturnToHomeMode();
+      _hasReturnedFromSubScreen = false;
+      return;
+    }
+    
+    String announcement = "Home Mode. ";
+    if (_selectedIndex == 0) {
+      announcement += "Wardrobe selected. Swipe down to select Scan Item. ";
+    } else {
+      announcement += "Scan Item selected. Swipe up to select Wardrobe. ";
+    }
+    announcement += "Double tap anywhere to enter. Single finger swipe left to return to main screen. Pinch to exit application. Shake the device for help.";
+    
+    _ttsService.speak(announcement, priority: SpeechPriority.high);
+  }
+
+  void _announceReturnToHomeMode() async {
+    await Future.delayed(const Duration(milliseconds: 700));
+    String announcement = "You are back in Home Mode. ";
+    if (_selectedIndex == 0) {
+      announcement += "Wardrobe selected. Swipe down to select Scan Item. ";
+    } else {
+      announcement += "Scan Item selected. Swipe up to select Wardrobe. ";
+    }
+    announcement += "Double tap anywhere to enter. Single finger swipe left to return to main screen. Pinch to exit application.";
+    
+    _ttsService.speak(announcement, priority: SpeechPriority.high);
+  }
+
+  void _handlePinch(double scale) {
+    if (scale < 0.7) {
+      HapticService.heavy(); // Strong haptic feedback for app exit
+      _ttsService.speak("Exiting application, bye!", priority: SpeechPriority.high);
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        exit(0);
+      });
+    }
+  }
+
+  void _enterSelected() async {
+    _hasReturnedFromSubScreen = true;
+    
+    if (_selectedIndex == 0) {
+      HapticService.medium(); // Haptic feedback for entering wardrobe
+      _ttsService.speak("Opening wardrobe", priority: SpeechPriority.high);
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const WardrobeScreen()),
+      );
+    } else {
+      HapticService.medium(); // Haptic feedback for entering scanner
+      _ttsService.speak("Opening scanner", priority: SpeechPriority.high);
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => QRScannerScreen(
+            onScan: (data) {
+              Navigator.pop(context);
+              _ttsService.speak("Item scanned successfully");
+            },
+          ),
         ),
-      ),
-    );
+      );
+    }
+    
+    // When we return, announce that we're back in home mode
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _announceReturnToHomeMode();
+      _hasReturnedFromSubScreen = false;
+    });
   }
 
-  void _navigateToUpdateStatus() {
-    _ttsService.speak("Opening status update", priority: SpeechPriority.high);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            const WardrobeScreen(mode: WardrobeMode.updateStatus),
-      ),
-    );
-  }
-
-  void _navigateToRemoveItems() {
-    _ttsService.speak("Opening item removal", priority: SpeechPriority.high);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const WardrobeScreen(mode: WardrobeMode.delete),
-      ),
-    );
-  }
-
-  void _navigateToQRGenerator() {
-    _ttsService.speak("Opening QR code generator",
-        priority: SpeechPriority.high);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const GenerateQRScreen(),
-      ),
-    );
-  }
-
-  void _speakWardrobeStats() {
-    final provider = context.read<ClothingProvider>();
-    final itemCount = provider.totalItems;
-    final cleanCount = provider.cleanItemsCount;
-    final dirtyCount = provider.dirtyItemsCount;
-
+  void _showHelp() {
     _ttsService.speak(
-      "Wardrobe summary: $itemCount total items. $cleanCount clean, $dirtyCount need washing.",
+      "Home Mode Help. Swipe up to select Wardrobe or swipe down to select Scan Item. Double tap anywhere to enter selected option. Single finger swipe left to return to main screen. Pinch to exit application.",
       priority: SpeechPriority.high,
     );
   }
@@ -116,248 +159,231 @@ class _HomeModeScreenState extends State<HomeModeScreen> {
       appBar: AppBar(
         title: const Text('Home Mode'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline_rounded),
+            onPressed: _showHelp,
+            tooltip: 'Help',
+          ),
+        ],
       ),
-      body: GestureDetectorWidget(
-        onSwipeUp: _navigateToWardrobe,
-        onSwipeDown: _navigateToScanner,
-        onSwipeLeft: _navigateToUpdateStatus,
-        onSwipeRight: _navigateToRemoveItems,
-        onDoubleTap: _navigateToQRGenerator,
-        onLongPress: _speakWardrobeStats,
-        onShake: () => _ttsService.repeatLastSpoken(),
-        helpText: "Home Mode. Swipe up for wardrobe, down to scan, "
-            "left to update status, right to remove items. Double tap to generate QR codes.",
-        child: Consumer<ClothingProvider>(
-          builder: (context, provider, child) {
-            return Padding(
-          padding: const EdgeInsets.all(4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-                  // Statistics Card -> Removed because user cannot read the text
-                  /*Card(
-                    elevation: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Wardrobe Statistics',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildStatRow(
-                            context,
-                            'Total Items',
-                            provider.totalItems.toString(),
-                            Icons.checkroom,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildStatRow(
-                            context,
-                            'Clean Items',
-                            provider.cleanItemsCount.toString(),
-                            Icons.check_circle,
-                            color: Colors.green,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildStatRow(
-                            context,
-                            'Need Washing',
-                            provider.dirtyItemsCount.toString(),
-                            Icons.wash,
-                            color: Colors.amber,
-                          ),
+      body: GestureDetector(
+        onScaleStart: (details) {
+          _initialScale = 1.0;
+          _startFocalPoint = details.focalPoint;
+        },
+        onScaleUpdate: (details) {
+          // Pinch to exit
+          if (details.scale < 0.7) {
+            _handlePinch(details.scale);
+          }
+          // Swipe detection
+          if (_startFocalPoint != null) {
+            final dx = details.focalPoint.dx - _startFocalPoint!.dx;
+            final dy = details.focalPoint.dy - _startFocalPoint!.dy;
+            
+            // Single finger horizontal swipe left - return to main screen
+            if (dx.abs() > dy.abs() && dx.abs() > 80 && dx < 0) {
+              HapticService.swipe(); // Haptic feedback for navigation
+              _ttsService.speak("Returning to main screen.", priority: SpeechPriority.high);
+              Future.delayed(const Duration(milliseconds: 1200), () {
+              Navigator.of(context).maybePop();
+              });
+              _startFocalPoint = null;
+            }
+            // Vertical swipe detection
+            else if (dy.abs() > dx.abs()) {
+              if (dy < -80) {
+                // Swipe up: Wardrobe seçili olsun
+                if (_selectedIndex != 0) {
+                  HapticService.selection(); // Haptic feedback for selection change
+                  setState(() => _selectedIndex = 0);
+                  _announceCurrentSelection();
+                }
+                _startFocalPoint = null;
+              } else if (dy > 80) {
+                // Swipe down: Scan Item seçili olsun
+                if (_selectedIndex != 1) {
+                  HapticService.selection(); // Haptic feedback for selection change
+                  setState(() => _selectedIndex = 1);
+                  _announceCurrentSelection();
+                }
+                _startFocalPoint = null;
+              }
+            }
+          }
+        },
+        onDoubleTap: _enterSelected,
+        child: Column(
+          children: [
+            // Wardrobe Section
+            Expanded(
+              child: Semantics(
+                label: 'Wardrobe. Swipe up or down to select. Double tap anywhere to enter.',
+                button: true,
+                selected: _selectedIndex == 0,
+                child: GestureDetector(
+                  onTap: () {
+                    HapticService.selection(); // Haptic feedback for tap selection
+                    setState(() => _selectedIndex = 0);
+                    _announceCurrentSelection();
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: _selectedIndex == 0 ? [
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                        ] : [
+                          Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                          Theme.of(context).colorScheme.primary.withOpacity(0.2),
                         ],
                       ),
                     ),
-                  ),*/
-
-                  
-
-                  // Quick Actions -> removed: serves no purpose
-                  /*Text(
-                    'Quick Actions',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 16),*/
-
-                  //Container(color: Colors.red.withValues(), child:
-
-                  Expanded(flex: 1, child: Row(children: [
-                    _buildActionCard(
-                        context,
-                        'View Wardrobe',
-                        'See all your items',
-                        Icons.visibility,
-                        _navigateToWardrobe,
-                        "", // Gesture hint removed as user cannot read the text
-                      ),
-                      _buildActionCard(
-                        context,
-                        'Scan Item',
-                        'Add new clothing item',
-                        Icons.qr_code_scanner,
-                        _navigateToScanner,
-                        "",
-                      ),],)),
-
-                      Expanded(flex: 1, child: Row(children: [
-                        _buildActionCard(
-                        context,
-                        'Update Status',
-                        'Mark items clean or dirty',
-                        Icons.update,
-                        _navigateToUpdateStatus,
-                        "",
-                      ),
-                      _buildActionCard(
-                        context,
-                        'Remove Items',
-                        'Delete items from wardrobe',
-                        Icons.delete,
-                        _navigateToRemoveItems,
-                        "",
-                      ),],)),
-                  
-
-                  // Generate QR Code Button -> removed: user should not be able to generate QR codes
-                  /*Center(
-                    child: ElevatedButton.icon(
-                      onPressed: _navigateToQRGenerator,
-                      icon: const Icon(Icons.qr_code),
-                      label: const Text('Generate QR Code'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 16,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.checkroom,
+                          size: _selectedIndex == 0 ? 110 : 90,
+                          color: Colors.white,
                         ),
-                      ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Wardrobe',
+                          style: Theme.of(context)
+                              .textTheme
+                              .displayMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        if (_selectedIndex == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16.0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Double tap anywhere to enter',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          )
+                        else ...[
+                          const SizedBox(height: 16),
+                          const Icon(
+                            Icons.swipe_up_rounded,
+                            size: 40,
+                            color: Colors.white70,
+                          ),
+                        ],
+                      ],
                     ),
-                  ),*/
+                  ),
+                ),
+              ),
+            ),
 
-                  
+            // Divider
+            Container(
+              height: 4,
+              color: Theme.of(context).dividerColor,
+            ),
 
-                  // Help Text
-                  /*Container(
-                    padding: const EdgeInsets.all(16),
+            // Scan Section
+            Expanded(
+              child: Semantics(
+                label: 'Scan Item. Swipe up or down to select. Double tap anywhere to enter.',
+                button: true,
+                selected: _selectedIndex == 1,
+                child: GestureDetector(
+                  onTap: () {
+                    HapticService.selection(); // Haptic feedback for tap selection
+                    setState(() => _selectedIndex = 1);
+                    _announceCurrentSelection();
+                  },
+                  child: Container(
+                    width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outline,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: _selectedIndex == 1 ? [
+                          Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                          Theme.of(context).colorScheme.primary,
+                        ] : [
+                          Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                          Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                        ],
                       ),
                     ),
-                    child: Text(
-                      'Use gestures to navigate quickly:\n'
-                      '• Swipe up: View wardrobe\n'
-                      '• Swipe down: Scan item\n'
-                      '• Swipe left: Update status\n'
-                      '• Swipe right: Remove items\n'
-                      '• Double tap: Generate QR code\n'
-                      '• Long press: Hear statistics',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.qr_code_scanner_rounded,
+                          size: _selectedIndex == 1 ? 110 : 90,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Scan Item',
+                          style: Theme.of(context)
+                              .textTheme
+                              .displayMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        if (_selectedIndex == 1)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16.0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Double tap anywhere to enter',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          )
+                        else ...[
+                          const SizedBox(height: 16),
+                          const Icon(
+                            Icons.swipe_down_rounded,
+                            size: 40,
+                            color: Colors.white70,
+                          ),
+                        ],
+                      ],
                     ),
-                  ),*/  //removed because user cannot read the text
-                ],
+                  ),
+                ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  Widget _buildStatRow(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon, {
-    Color? color,
-  }) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          color: color ?? Theme.of(context).colorScheme.primary,
-          size: 24,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        ),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color ?? Theme.of(context).colorScheme.primary,
-              ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionCard(
-    BuildContext context,
-    String title,
-    String subtitle,
-    IconData icon,
-    VoidCallback onTap,
-    String gestureHint,
-  ) {
-    return Expanded(child: Card(
-      elevation: 2,
-      child: InkWell(
-        onTap: () {
-          _ttsService.speak("$title selected");
-          onTap();
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 48,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                gestureHint,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontStyle: FontStyle.italic,
-                      color: Theme.of(context).colorScheme.secondary,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          )
-        ),
-      ),
-    ));
-  }
-
-  @override
-  void dispose() {
-    _ttsService.dispose();
-    super.dispose();
   }
 }

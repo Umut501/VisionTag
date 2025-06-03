@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/clothing_item.dart';
@@ -19,6 +20,11 @@ class RetailModeScreen extends StatefulWidget {
 class _RetailModeScreenState extends State<RetailModeScreen> {
   final TtsService _ttsService = TtsService();
   ClothingItem? _scannedItem;
+  int _focusedIndex = 0; // 0 = Scan, 1 = Create QR
+  bool _announcementMade = false;
+  Offset? _startFocalPoint;
+  Set<int> _activePointers = {};
+  bool _isMultiTouch = false;
 
   @override
   void initState() {
@@ -28,22 +34,33 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
 
   Future<void> _initializeTts() async {
     await _ttsService.initTts();
-    _ttsService.announceScreen("Retail Mode");
-    _ttsService.speak(
-      "Swipe up to scan an item. Swipe down to create a QR code. "
-      "Triple tap for help.",
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _announceCurrentSelection();
+    });
+  }
+
+  void _announceCurrentSelection() {
+    if (_scannedItem != null) return;
+    
+    String announcement = "Retail Mode. ";
+    if (_focusedIndex == 0) {
+      announcement += "Scan Item selected. Swipe down to select Create QR Code. Double tap to scan clothing items. ";
+    } else {
+      announcement += "Create QR Code selected. Swipe up to select Scan Item. Double tap to create QR codes. ";
+    }
+    announcement += "Swipe left to return to Home Mode. Pinch to exit application.";
+    
+    _ttsService.speak(announcement, priority: SpeechPriority.high);
   }
 
   void _showHelp() {
-    HapticService.tripleTap();
+    HapticService.medium();
     _ttsService.speak(
         "Retail Mode Help. "
-        "Swipe up to scan a clothing item's QR code. "
-        "Swipe down to create a new QR code. "
+        "Swipe up or down to select between Scan Item and Create QR Code. "
+        "Double tap to activate selected option. "
         "When viewing an item, swipe left to add to wardrobe, "
         "swipe right to scan another item. "
-        "Double tap to hear full details. "
         "Long press to share item details.",
         priority: SpeechPriority.high);
   }
@@ -60,6 +77,17 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
       appBar: AppBar(
         title: const Text('Retail Mode'),
         centerTitle: true,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            _ttsService.speak("Returning to main screen", priority: SpeechPriority.high);
+            Future.delayed(const Duration(milliseconds: 2500), () {
+              if (mounted) {
+                Navigator.of(context).pop();
+              }
+            });
+          },
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline_rounded),
@@ -68,158 +96,193 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
           ),
         ],
       ),
-      body: GestureDetector(
-        onVerticalDragEnd: (details) {
-          if (_scannedItem != null) {
-            return; // Don't handle swipes when item is displayed
-          }
-
-          if (details.primaryVelocity == null) return;
-
-          // Swipe up - scan
-          if (details.primaryVelocity! < -200) {
-            _scanQrCode();
-          }
-          // Swipe down - create QR
-          else if (details.primaryVelocity! > 200) {
-            _createQrCode();
-          }
-        },
-        child: _scannedItem == null ? _buildScanPrompt() : _buildItemDetails(),
-      ),
+      body: _scannedItem == null ? _buildSelectionInterface() : _buildItemDetails(),
     );
   }
 
-  Widget _buildScanPrompt() {
-    return GestureDetector(
-      onTap: () {
-        HapticService.light();
-        _ttsService.speak(
-          "Retail Mode. Swipe up to scan, swipe down to create QR code.",
-        );
+  Widget _buildSelectionInterface() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_announcementMade) {
+        _announcementMade = true;
+        _announceCurrentSelection();
+      }
+    });
+
+    return Listener(
+      onPointerDown: (details) {
+        _activePointers.add(details.pointer);
+        _isMultiTouch = _activePointers.length >= 2;
       },
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: Theme.of(context).scaffoldBackgroundColor,
-        child: Column(
-          children: [
-            // Scan Section
-            Expanded(
-              child: Semantics(
-                label:
-                    'Scan Item. Swipe up or double tap to scan QR codes on clothing items.',
-                button: true,
-                child: GestureDetector(
-                  onDoubleTap: _scanQrCode,
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.8),
-                        ],
-                      ),
+      onPointerUp: (details) {
+        _activePointers.remove(details.pointer);
+        _isMultiTouch = _activePointers.length >= 2;
+      },
+      onPointerCancel: (details) {
+        _activePointers.remove(details.pointer);
+        _isMultiTouch = _activePointers.length >= 2;
+      },
+      child: GestureDetector(
+        onScaleStart: (details) {
+          _startFocalPoint = details.focalPoint;
+        },
+        onScaleUpdate: (details) async {
+          if (details.scale < 0.7) {
+            _ttsService.speak("Exiting application, bye!", priority: SpeechPriority.high);
+            await Future.delayed(const Duration(milliseconds: 1000));
+            exit(0);
+          }
+          
+          if (_startFocalPoint != null && details.scale > 0.9 && details.scale < 1.1) {
+            final dx = details.focalPoint.dx - _startFocalPoint!.dx;
+            final dy = details.focalPoint.dy - _startFocalPoint!.dy;
+            
+            if (!_isMultiTouch) {
+              if (dy.abs() > dx.abs() && dy.abs() > 50) {
+                if (dy > 0) {
+                  // Swipe down
+                  setState(() {
+                    _focusedIndex = _focusedIndex == 0 ? 1 : 0;
+                  });
+                  _announceCurrentSelection();
+                  _startFocalPoint = null;
+                } else {
+                  // Swipe up
+                  setState(() {
+                    _focusedIndex = _focusedIndex == 0 ? 1 : 0;
+                  });
+                  _announceCurrentSelection();
+                  _startFocalPoint = null;
+                }
+              }
+              else if (dx.abs() > dy.abs() && dx.abs() > 80 && dx < 0) {
+                _ttsService.speak("Returning to main screen", priority: SpeechPriority.high);
+                Future.delayed(const Duration(milliseconds: 2500), () {
+                  if (mounted) {
+                    Navigator.of(context).maybePop();
+                  }
+                });
+                _startFocalPoint = null;
+              }
+            }
+          }
+        },
+        onScaleEnd: (details) {
+          _startFocalPoint = null;
+        },
+        onDoubleTap: () {
+          if (_focusedIndex == 0) {
+            _scanQrCode();
+          } else {
+            _createQrCode();
+          }
+        },
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: Column(
+            children: [
+              // Scan Section
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: _focusedIndex == 0 ? [
+                        Theme.of(context).colorScheme.primary,
+                        Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                      ] : [
+                        Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                        Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                      ],
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.qr_code_scanner_rounded,
-                          size: 100,
-                          color: Colors.white,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.qr_code_scanner_rounded,
+                        size: _focusedIndex == 0 ? 120 : 100,
+                        color: _focusedIndex == 0 ? Colors.white : Colors.white70,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Scan Item',
+                        style: TextStyle(
+                          fontSize: _focusedIndex == 0 ? 32 : 28,
+                          color: _focusedIndex == 0 ? Colors.white : Colors.white70,
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Scan Item',
-                          style: Theme.of(context)
-                              .textTheme
-                              .displayMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Icon(
+                      ),
+                      const SizedBox(height: 16),
+                      if (_focusedIndex != 0) ...[
+                        Icon(
                           Icons.swipe_up_rounded,
                           size: 40,
                           color: Colors.white70,
                         ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
-            ),
 
-            // Divider
-            Container(
-              height: 4,
-              color: Theme.of(context).dividerColor,
-            ),
+              // Divider
+              Container(
+                height: 4,
+                color: Theme.of(context).dividerColor,
+              ),
 
-            // Create QR Section
-            Expanded(
-              child: Semantics(
-                label:
-                    'Create QR Code. Swipe down or double tap to generate QR codes for clothing items.',
-                button: true,
-                child: GestureDetector(
-                  onDoubleTap: _createQrCode,
-                  child: Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Theme.of(context)
-                              .colorScheme
-                              .secondary
-                              .withOpacity(0.8),
-                          Theme.of(context).colorScheme.secondary,
-                        ],
-                      ),
+              // Create QR Section
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: _focusedIndex == 1 ? [
+                        Theme.of(context).colorScheme.secondary,
+                        Theme.of(context).colorScheme.secondary.withOpacity(0.8),
+                      ] : [
+                        Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                        Theme.of(context).colorScheme.secondary.withOpacity(0.2),
+                      ],
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.qr_code_rounded,
-                          size: 100,
-                          color: Colors.white,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.qr_code_rounded,
+                        size: _focusedIndex == 1 ? 120 : 100,
+                        color: _focusedIndex == 1 ? Colors.white : Colors.white70,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Create QR Code',
+                        style: TextStyle(
+                          fontSize: _focusedIndex == 1 ? 32 : 28,
+                          color: _focusedIndex == 1 ? Colors.white : Colors.white70,
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Create QR Code',
-                          style: Theme.of(context)
-                              .textTheme
-                              .displayMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Icon(
+                      ),
+                      const SizedBox(height: 16),
+                      if (_focusedIndex != 1) ...[
+                        Icon(
                           Icons.swipe_down_rounded,
                           size: 40,
                           color: Colors.white70,
                         ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -241,6 +304,7 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
           _scanAnother();
         }
       },
+      onLongPress: _shareItem,
       child: ClothingItemDetails(
         item: _scannedItem!,
         onAddToWardrobe: _addToWardrobe,
@@ -294,7 +358,7 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
       );
     } catch (e) {
       HapticService.error();
-      _ttsService.announceError("Invalid QR code. Please try again");
+      _ttsService.speak("Invalid QR code. Please try again", priority: SpeechPriority.high);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Invalid QR code format')),
@@ -393,6 +457,7 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
       // Clear the scanned item after adding
       setState(() {
         _scannedItem = null;
+        _announcementMade = false; // Reset so announcement plays again
       });
     }
   }
@@ -401,6 +466,7 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
     HapticService.swipe();
     setState(() {
       _scannedItem = null;
+      _announcementMade = false; // Reset so announcement plays again
     });
     _ttsService.speak(
       "Ready to scan another item",

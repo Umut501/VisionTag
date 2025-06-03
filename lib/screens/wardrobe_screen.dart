@@ -1,3 +1,5 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:visiontag/models/clothing_item.dart';
@@ -5,20 +7,10 @@ import 'package:visiontag/providers/clothing_provider.dart';
 import 'package:visiontag/services/tts_service.dart';
 import 'package:visiontag/services/haptic_service.dart';
 import 'dart:math';
-
-enum WardrobeMode {
-  view,
-  updateStatus,
-  delete,
-}
+import 'dart:io';
 
 class WardrobeScreen extends StatefulWidget {
-  final WardrobeMode mode;
-
-  const WardrobeScreen({
-    Key? key,
-    this.mode = WardrobeMode.view,
-  }) : super(key: key);
+  const WardrobeScreen({Key? key}) : super(key: key);
 
   @override
   State<WardrobeScreen> createState() => _WardrobeScreenState();
@@ -29,105 +21,218 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   int _focusedIndex = 0;
-  int? _flippedIndex; // <-- Eklendi
-  String? _selectedItemId;
-  bool _deleteInitiated = false;
+  int? _flippedIndex;
+  int _autoDetailToken = 0;
   bool _announcementMade = false;
-  Future? _pendingDetailFuture;
-  int _pendingDetailToken = 0;
-  int _autoDetailToken = 0; // State değişkenlerine ekleyin
-
   int get _itemsPerPage => 2;
+  String? _deleteCandidateId;
+  Offset? _startFocalPoint;
+  
+  // For tracking multi-finger gestures
+  Set<int> _activePointers = {};
+  bool _isMultiTouch = false;
+  bool _firstEntry = true;
+  
+  // Delete confirmation state
+  bool _isDeleteConfirmation = false;
+  String? _pendingDeleteId;
+  bool _zoomProcessed = false; // Prevent multiple zoom triggers
+  DateTime? _lastZoomTime;
 
   @override
   void initState() {
     super.initState();
-    _initializeTts();
-  }
-
-  Future<void> _initializeTts() async {
-    await _ttsService.initTts();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<ClothingProvider>(context, listen: false);
-      final currentPageItems = _getCurrentPageItems(_currentPage);
-      _announceWardrobeInfoAndFocusItem(currentPageItems, isFirstOpen: true);
+      _announceCurrentSelection();
     });
-    _announcementMade = true;
   }
 
-  void _announceWardrobeInfo() {
-    if (_announcementMade) return; // Prevent duplicate on rebuild
-    final provider = Provider.of<ClothingProvider>(context, listen: false);
-    final items = provider.items;
-    final totalPages = (items.length / _itemsPerPage).ceil();
-    final currentPageItems = _getCurrentPageItems(_currentPage);
+void _announceCurrentSelection() {
+  final provider = Provider.of<ClothingProvider>(context, listen: false);
+  final items = provider.items;
+  final totalPages = (items.length / _itemsPerPage).ceil();
+  final currentPageItems = _getCurrentPageItems(_currentPage);
 
-    String announcement = "";
-    switch (widget.mode) {
-      case WardrobeMode.view:
-        announcement = "Wardrobe view. ";
-        break;
-      case WardrobeMode.updateStatus:
-        announcement = "Update status mode. ";
-        break;
-      case WardrobeMode.delete:
-        announcement = "Remove items mode. ";
-        break;
-    }
-
-    announcement += "Page ${_currentPage + 1} of $totalPages. "
-        "${currentPageItems.length} items on this page. "
-        "${items.length} total items in wardrobe. "
-        "Swipe up or down to move between items. "
-        "Single tap to hear item details. ";
-
-    if (widget.mode == WardrobeMode.view) {
-      announcement += "Double tap to view full details.";
-    } else if (widget.mode == WardrobeMode.updateStatus) {
-      announcement += "Double tap to change clean status.";
-    } else {
-      announcement += "Double tap to select for removal. Double tap again to confirm.";
-    }
-
-    _ttsService.speak(announcement);
+  if (items.isEmpty) {
+    _ttsService.speak("Your wardrobe is empty. Scan clothing items to add them.");
+    return;
   }
 
-  void _announceWardrobeInfoAndFocusItem(List<ClothingItem> currentPageItems, {bool isFirstOpen = false}) async {
-    await _ttsService.stop();
+  if (currentPageItems.isNotEmpty) {
+    final currentItem = currentPageItems[_focusedIndex];
 
-    final provider = Provider.of<ClothingProvider>(context, listen: false);
-    final items = provider.items;
-    final totalPages = (items.length / _itemsPerPage).ceil();
+    // Kısa location info
+    String pageStr = "${_ordinal(_currentPage + 1)} page";
+    String itemStr = "${_ordinal(_focusedIndex + 1)} item";
+    String announcement = "Wardrobe, $pageStr, $itemStr. ";
 
-    String announcement;
-    if (isFirstOpen) {
-      announcement = "You opened your wardrobe. You have ${items.length} items in your wardrobe. "
-          "Each page shows 2 items. "
-          "You are on page ${_currentPage + 1} of $totalPages. ";
+    // Current item info
+    announcement += "Selected item is: ${currentItem.name}. ";
+    announcement += "Double tap to listen details. The item ";
+    announcement += currentItem.isClean ? "is clean. " : "needs washing. ";
+    if (currentItem.isClean) {
+      announcement += "Hold to mark dirty. ";
     } else {
-      announcement = "Page ${_currentPage + 1} of $totalPages. ";
+      announcement += "Hold to mark clean. ";
     }
 
-    if (currentPageItems.isNotEmpty) {
-      announcement += "The first item is ${currentPageItems[0].name}. ";
-      announcement += "Swipe up or down to move between items. Double tap anywhere for listening details of selected item.";
-      announcement += " You are currently focused on ${currentPageItems[_focusedIndex].name}.";
-      announcement += "Reading details for ${currentPageItems[_focusedIndex].name}.";
-    } else {
-      announcement += "There are no items on this page.";
+    // Delete action
+    announcement += "Zoom in to delete item. ";
+
+    // Possible actions
+    if (_focusedIndex == 0 && currentPageItems.length > 1) {
+      announcement += "Swipe down with one finger to go to the next item ${currentPageItems[1].name}. ";
+    } else if (_focusedIndex == currentPageItems.length - 1 && currentPageItems.length > 1) {
+      announcement += "Swipe up with one finger to go to the previous item ${currentPageItems[0].name}. ";
+    } else if (currentPageItems.length > 1) {
+      announcement += "Swipe up with one finger to go to the previous item ${currentPageItems[_focusedIndex - 1].name}, swipe down with one finger to go to the next item ${currentPageItems[_focusedIndex + 1].name}. ";
     }
 
-    await _ttsService.speak(announcement);
-
-    final myToken = ++_autoDetailToken;
-
-    if (currentPageItems.isNotEmpty) {
-      await Future.delayed(const Duration(milliseconds: 25000));
-      if (myToken == _autoDetailToken) {
-        _speakItemDetails(currentPageItems[_focusedIndex]);
+    if (totalPages > 1) {
+      if (_currentPage == 0) {
+        announcement += "Swipe right with two fingers for next page. ";
+      } else if (_currentPage == totalPages - 1) {
+        announcement += "Swipe left with two fingers for previous page. ";
+      } else {
+        announcement += "Swipe left with two fingers for previous page, swipe right with two fingers for next page. ";
       }
     }
+    announcement += "Swipe left with one finger to return home. Pinch to exit.";
+
+    _ttsService.speak(announcement, priority: SpeechPriority.high);
   }
+}
+
+void _announceItemChange() {
+  final currentPageItems = _getCurrentPageItems(_currentPage);
+  final provider = Provider.of<ClothingProvider>(context, listen: false);
+  final items = provider.items;
+  final totalPages = (items.length / _itemsPerPage).ceil();
+
+  if (currentPageItems.isNotEmpty) {
+    final currentItem = currentPageItems[_focusedIndex];
+
+    // Kısa location info
+    String pageStr = "${_ordinal(_currentPage + 1)} page";
+    String itemStr = "${_ordinal(_focusedIndex + 1)} item";
+    String announcement = "Wardrobe, $pageStr, $itemStr. ";
+
+    // Current item info
+    announcement += "Selected item is: ${currentItem.name}. ";
+    announcement += "Double tap to listen details. The item ";
+    announcement += currentItem.isClean ? "is clean. " : "needs washing. ";
+    if (currentItem.isClean) {
+      announcement += "Hold to mark dirty. ";
+    } else {
+      announcement += "Hold to mark clean. ";
+    }
+
+    // Delete action
+    announcement += "Zoom in to delete item. ";
+
+    // Possible actions
+    if (_focusedIndex == 0 && currentPageItems.length > 1) {
+      announcement += "Swipe down with one finger to go to the next item ${currentPageItems[1].name}. ";
+    } else if (_focusedIndex == currentPageItems.length - 1 && currentPageItems.length > 1) {
+      announcement += "Swipe up with one finger to go to the previous item ${currentPageItems[0].name}. ";
+    } else if (currentPageItems.length > 1) {
+      announcement += "Swipe up with one finger to go to the previous item ${currentPageItems[_focusedIndex - 1].name}, swipe down with one finger to go to the next item ${currentPageItems[_focusedIndex + 1].name}. ";
+    }
+
+    if (totalPages > 1) {
+      if (_currentPage == 0) {
+        announcement += "Swipe right with two fingers for next page. ";
+      } else if (_currentPage == totalPages - 1) {
+        announcement += "Swipe left with two fingers for previous page. ";
+      } else {
+        announcement += "Swipe left with two fingers for previous page, swipe right with two fingers for next page. ";
+      }
+    }
+    announcement += "Swipe left with one finger to return home. Pinch to exit.";
+
+    _ttsService.speak(announcement, priority: SpeechPriority.high);
+  }
+}
+
+void _handleDeleteItem() {
+  final currentPageItems = _getCurrentPageItems(_currentPage);
+  if (currentPageItems.isNotEmpty && _pendingDeleteId != null) {
+    final provider = Provider.of<ClothingProvider>(context, listen: false);
+    
+    // Find the specific item to delete
+    final itemToDelete = currentPageItems.firstWhere(
+      (item) => item.id == _pendingDeleteId,
+      orElse: () => currentPageItems[_focusedIndex]
+    );
+    
+    final itemName = itemToDelete.name;
+    
+    // Delete only the specific item
+    provider.removeItem(_pendingDeleteId!);
+    HapticService.success(); // Haptic feedback for successful deletion
+    _ttsService.speak("$itemName has been deleted from your wardrobe.");
+    
+    setState(() {
+      _isDeleteConfirmation = false;
+      _pendingDeleteId = null;
+      _flippedIndex = null;
+      _zoomProcessed = false; // Reset zoom flag
+      
+      // Update page structure after deletion
+      final allItems = provider.items;
+      final newTotalPages = (allItems.length / _itemsPerPage).ceil();
+      
+      // If current page is now empty but not the last page, stay on current page
+      // If current page is empty and is the last page, go to previous page
+      if (allItems.isEmpty) {
+        // All items deleted
+        _currentPage = 0;
+        _focusedIndex = 0;
+      } else {
+        final newCurrentPageItems = _getCurrentPageItems(_currentPage);
+        
+        if (newCurrentPageItems.isEmpty && _currentPage > 0) {
+          // Current page is empty, go to previous page
+          _currentPage--;
+          _focusedIndex = 0;
+        } else if (newCurrentPageItems.isNotEmpty) {
+          // Adjust focused index if it's out of bounds
+          if (_focusedIndex >= newCurrentPageItems.length) {
+            _focusedIndex = newCurrentPageItems.length - 1;
+          }
+        }
+      }
+    });
+    
+    // Announce new selection if items still exist
+    final provider2 = Provider.of<ClothingProvider>(context, listen: false);
+    if (provider2.items.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        _announceCurrentSelection();
+      });
+    }
+  }
+}
+
+void _cancelDelete() {
+  setState(() {
+    _isDeleteConfirmation = false;
+    _pendingDeleteId = null;
+    _zoomProcessed = false; // Reset zoom flag
+  });
+  _ttsService.speak("Delete cancelled.");
+}
+
+// Yardımcı fonksiyon: 1 -> first, 2 -> second, 3 -> third, ...
+String _ordinal(int n) {
+  if (n == 1) return "first";
+  if (n == 2) return "second";
+  if (n == 3) return "third";
+  if (n == 4) return "fourth";
+  if (n == 5) return "fifth";
+  return "$n" + "th";
+}
 
   List<ClothingItem> _getCurrentPageItems(int pageIndex) {
     final provider = Provider.of<ClothingProvider>(context, listen: false);
@@ -139,22 +244,140 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     return items.sublist(startIndex, endIndex);
   }
 
+  String _formatPrice(ClothingItem item) {
+    try {
+      if (item.discount > 0) {
+        final originalPrice = item.price;
+        final discountAmount = originalPrice * (item.discount / 100);
+        final finalPrice = originalPrice - discountAmount;
+        return '\$${finalPrice.toStringAsFixed(2)} (${item.discount.toInt()}% off)';
+      } else {
+        return '\$${item.price.toStringAsFixed(2)}';
+      }
+    } catch (e) {
+      // Fallback eğer hesaplama hatası olursa
+      return '\$${item.price.toStringAsFixed(2)}';
+    }
+  }
+
+  Widget _buildCompactDetailRow(String label, String value, {bool showRecyclable = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label:',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 18.0,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (showRecyclable) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.recycling,
+                  size: 20,
+                  color: Colors.green[200],
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildTwoColumnDetails(ClothingItem item) {
+    final leftColumnData = [
+      {'label': 'Color', 'value': item.color, 'recyclable': false},
+      {'label': 'Size', 'value': item.size, 'recyclable': false},
+      {'label': 'Material', 'value': item.material, 'recyclable': item.recyclable},
+      {'label': 'Brand', 'value': item.manufacturer, 'recyclable': false},
+    ];
+    
+    final rightColumnData = [
+      {'label': 'Texture', 'value': item.texture, 'recyclable': false},
+      {'label': 'Status', 'value': item.isClean ? "Clean" : "Needs washing", 'recyclable': false},
+      {'label': 'Collection', 'value': item.collection, 'recyclable': false},
+      {'label': 'Price', 'value': _formatPrice(item), 'recyclable': false},
+    ];
+
+    return [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              children: leftColumnData.map((data) => 
+                _buildCompactDetailRow(
+                  data['label'] as String, 
+                  data['value'] as String,
+                  showRecyclable: data['recyclable'] as bool,
+                )
+              ).toList(),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              children: rightColumnData.map((data) => 
+                _buildCompactDetailRow(
+                  data['label'] as String, 
+                  data['value'] as String,
+                  showRecyclable: data['recyclable'] as bool,
+                )
+              ).toList(),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_getAppBarTitle()),
+        title: const Text('My Wardrobe'),
         centerTitle: true,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            _ttsService.speak("Returning to Home Mode", priority: SpeechPriority.high);
+            Future.delayed(const Duration(milliseconds: 2500), () {
+              if (mounted) {
+                Navigator.of(context).pop();
+              }
+            });
+          },
+        ),
       ),
       body: Consumer<ClothingProvider>(
         builder: (context, provider, child) {
           final items = provider.items;
 
-          if (items.isEmpty) {
-            if (!_announcementMade) {
-              _ttsService.speak("Your wardrobe is empty. Scan clothing items to add them.");
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (items.isNotEmpty && !_announcementMade) {
               _announcementMade = true;
+              _announceCurrentSelection();
             }
+          });
+
+          if (items.isEmpty) {
             return _buildEmptyWardrobe();
           }
 
@@ -165,95 +388,248 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
             _focusedIndex = 0;
           }
 
-          return GestureDetector(
-            onHorizontalDragEnd: (details) {
-              if (details.primaryVelocity == null) return;
-              if (details.primaryVelocity! < -200 && _currentPage < totalPages - 1) {
-                _pageController.nextPage(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                );
-              } else if (details.primaryVelocity! > 200) {
-                if (_deleteInitiated && widget.mode == WardrobeMode.delete) {
-                  setState(() {
-                    _deleteInitiated = false;
-                    _selectedItemId = null;
-                  });
-                  HapticService.light();
-                  _ttsService.speak("Delete cancelled");
-                } else if (_currentPage > 0) {
-                  _pageController.previousPage(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                  );
+          return Listener(
+            onPointerDown: (details) {
+              _activePointers.add(details.pointer);
+              _isMultiTouch = _activePointers.length >= 2;
+            },
+            onPointerUp: (details) {
+              _activePointers.remove(details.pointer);
+              _isMultiTouch = _activePointers.length >= 2;
+            },
+            onPointerCancel: (details) {
+              _activePointers.remove(details.pointer);
+              _isMultiTouch = _activePointers.length >= 2;
+            },
+            child: GestureDetector(
+              onScaleStart: (details) {
+                _startFocalPoint = details.focalPoint;
+                _zoomProcessed = false; // Reset zoom processing flag
+              },
+              onScaleUpdate: (details) async {
+                // Exit app with pinch
+                if (details.scale < 0.7) {
+                  _ttsService.speak("Exiting application, bye!", priority: SpeechPriority.high);
+                  await Future.delayed(const Duration(milliseconds: 1000));
+                  exit(0);
+                  return;
                 }
-              }
-            },
-            onVerticalDragEnd: (details) async {
-              if (currentPageItems.length < 2) return;
-              if (details.primaryVelocity == null) return;
-              setState(() {
-                _flippedIndex = null; // Her swipe'ta kartı ön yüze döndür
-              });
-              if (details.primaryVelocity! > 200 && _focusedIndex < currentPageItems.length - 1) {
-                setState(() {
-                  _focusedIndex++;
+                
+                // Zoom in for delete - more conservative thresholds with debouncing
+                if (details.scale > 1.8 && !_zoomProcessed) {
+                  final now = DateTime.now();
+                  
+                  // Prevent rapid zoom triggers (minimum 1 second between actions)
+                  if (_lastZoomTime != null && now.difference(_lastZoomTime!).inMilliseconds < 1000) {
+                    return;
+                  }
+                  
+                  if (!_isDeleteConfirmation) {
+                    final currentPageItems = _getCurrentPageItems(_currentPage);
+                    if (currentPageItems.isNotEmpty) {
+                      final itemToDelete = currentPageItems[_focusedIndex];
+                      setState(() {
+                        _isDeleteConfirmation = true;
+                        _pendingDeleteId = itemToDelete.id;
+                        _zoomProcessed = true;
+                      });
+                      _lastZoomTime = now;
+                      HapticService.warning(); // Haptic feedback for delete warning
+                      _ttsService.speak("Are you sure you want to delete ${itemToDelete.name}? Zoom in again to confirm, or swipe left to cancel.");
+                      return;
+                    }
+                  } else if (details.scale > 2.2) {
+                    setState(() {
+                      _zoomProcessed = true;
+                    });
+                    _lastZoomTime = now;
+                    HapticService.heavy(); // Strong haptic feedback for delete confirmation
+                    _handleDeleteItem();
+                    return;
+                  }
+                }
+                
+                // Only do swipe detection if scale is near 1.0 (no zoom)
+                if (_startFocalPoint != null && details.scale > 0.8 && details.scale < 1.2) {
+                  final dx = details.focalPoint.dx - _startFocalPoint!.dx;
+                  final dy = details.focalPoint.dy - _startFocalPoint!.dy;
+                  
+                  // Two finger swipes for page navigation
+                  if (_isMultiTouch && dx.abs() > dy.abs() && dx.abs() > 50) {
+                    if (dx > 0) {
+                      if (_currentPage < totalPages - 1) {
+                        setState(() {
+                          _currentPage++;
+                          _focusedIndex = 0;
+                          _flippedIndex = null;
+                          _deleteCandidateId = null;
+                          _isDeleteConfirmation = false;
+                          _pendingDeleteId = null;
+                          _zoomProcessed = false;
+                          _zoomProcessed = false;
+                        });
+                        _pageController.animateToPage(
+                          _currentPage,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        _announceCurrentSelection();
+                        _startFocalPoint = null;
+                      }
+                    } else {
+                      if (_currentPage > 0) {
+                        setState(() {
+                          _currentPage--;
+                          _focusedIndex = 0;
+                          _flippedIndex = null;
+                          _deleteCandidateId = null;
+                          _isDeleteConfirmation = false;
+                          _pendingDeleteId = null;
+                        });
+                        _pageController.animateToPage(
+                          _currentPage,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        _announceCurrentSelection();
+                        _startFocalPoint = null;
+                      }
+                    }
+                  }
+                  // Single finger swipes for item navigation and back
+                  else if (!_isMultiTouch) {
+                    if (dy.abs() > dx.abs() && dy.abs() > 50) {
+                      if (dy > 0) {
+                        if (_focusedIndex < currentPageItems.length - 1) {
+                          setState(() {
+                            _focusedIndex++;
+                            _flippedIndex = null;
+                            _deleteCandidateId = null;
+                            _isDeleteConfirmation = false;
+                            _pendingDeleteId = null;
+                            _zoomProcessed = false;
+                            _zoomProcessed = false;
+                          });
+                          HapticService.selection(); // Haptic feedback for item navigation
+                          _announceItemChange();
+                          _startFocalPoint = null;
+                        }
+                      } else {
+                        if (_focusedIndex > 0) {
+                          setState(() {
+                            _focusedIndex--;
+                            _flippedIndex = null;
+                            _deleteCandidateId = null;
+                            _isDeleteConfirmation = false;
+                            _pendingDeleteId = null;
+                          });
+                          HapticService.selection(); // Haptic feedback for item navigation
+                          _announceItemChange();
+                          _startFocalPoint = null;
+                        }
+                      }
+                    }
+                    else if (dx.abs() > dy.abs() && dx.abs() > 80 && dx < 0) {
+                      if (_isDeleteConfirmation) {
+                        HapticService.light(); // Light haptic for cancel
+                        _cancelDelete();
+                        _startFocalPoint = null;
+                      } else {
+                        HapticService.swipe(); // Haptic feedback for navigation
+                        _ttsService.speak("Returning to Home Mode", priority: SpeechPriority.high);
+                        Future.delayed(const Duration(milliseconds: 2500), () {
+                          if (mounted) {
+                            Navigator.of(context).maybePop();
+                          }
+                        });
+                        _startFocalPoint = null;
+                      }
+                    }
+                  }
+                }
+              },
+              onScaleEnd: (details) {
+                _startFocalPoint = null;
+                // Reset zoom processing after gesture ends
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    setState(() {
+                      _zoomProcessed = false;
+                    });
+                  }
                 });
-                await _ttsService.stop();
-                _speakItemDetails(currentPageItems[_focusedIndex]);
-              } else if (details.primaryVelocity! < -200 && _focusedIndex > 0) {
-                setState(() {
-                  _focusedIndex--;
-                });
-                await _ttsService.stop();
-                _speakItemDetails(currentPageItems[_focusedIndex]);
-              }
-            },
-            onDoubleTap: () async {
-              if (currentPageItems.isNotEmpty) {
-                if (widget.mode == WardrobeMode.view) {
+              },
+              onDoubleTap: () async {
+                HapticService.medium(); // Haptic feedback for double tap
+                final currentPageItems = _getCurrentPageItems(_currentPage);
+                if (currentPageItems.isNotEmpty) {
+                  final focusedItem = currentPageItems[_focusedIndex];
                   setState(() {
                     _flippedIndex = _focusedIndex;
+                    _deleteCandidateId = null;
+                    _isDeleteConfirmation = false;
+                    _pendingDeleteId = null;
+                    _zoomProcessed = false;
                   });
                   await _ttsService.stop();
-                  _autoDetailToken++; // Otomatik detay okuma işlemini iptal et
-                  _ttsService.speak("Reading full details for ${currentPageItems[_focusedIndex].name} item.", priority: SpeechPriority.high);
-                  await Future.delayed(const Duration(milliseconds: 2800));
-                  _ttsService.speak(currentPageItems[_focusedIndex].accessibilityDescription);
-                } else if (widget.mode == WardrobeMode.updateStatus) {
-                  _updateItemStatus(currentPageItems[_focusedIndex], provider);
-                } else if (widget.mode == WardrobeMode.delete) {
-                  _handleDeleteDoubleTap(currentPageItems[_focusedIndex], provider);
+                  _ttsService.speak("Reading full details for ${focusedItem.name} item.", priority: SpeechPriority.high);
+                  await Future.delayed(const Duration(milliseconds: 4000));
+                  _ttsService.speak(focusedItem.accessibilityDescription);
                 }
-              }
-            },
-            child: Column(
-              children: [
-                Expanded(
-                  child: PageView.builder(
-                    controller: _pageController,
-                    onPageChanged: (page) {
-                      setState(() {
-                        _currentPage = page;
-                        _selectedItemId = null;
-                        _deleteInitiated = false;
-                        _focusedIndex = 0;
-                        _pendingDetailToken++;
-                        _flippedIndex = null; // Sayfa değişince kartı ön yüze döndür
-                      });
-                      _announcementMade = false;
-                      final currentPageItems = _getCurrentPageItems(page);
-                      _announceWardrobeInfoAndFocusItem(currentPageItems, isFirstOpen: false);
-                    },
-                    itemCount: totalPages,
-                    itemBuilder: (context, pageIndex) {
-                      final pageItems = _getCurrentPageItems(pageIndex);
-                      return _buildTwoItemLayout(pageItems, provider);
-                    },
+              },
+              onLongPress: () async {
+                HapticService.medium(); // Haptic feedback for long press
+                final currentPageItems = _getCurrentPageItems(_currentPage);
+                if (currentPageItems.isNotEmpty) {
+                  final focusedItem = currentPageItems[_focusedIndex];
+                  Provider.of<ClothingProvider>(context, listen: false).toggleCleanStatus(focusedItem.id);
+                  final newStatus = !focusedItem.isClean;
+                  final message = newStatus
+                      ? "${focusedItem.name} marked as clean"
+                      : "${focusedItem.name} marked as needs washing";
+                  HapticService.success(); // Haptic feedback for successful status change
+                  _ttsService.speak(message);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                  setState(() {
+                    _flippedIndex = null;
+                    _deleteCandidateId = null;
+                    _isDeleteConfirmation = false;
+                    _pendingDeleteId = null;
+                  });
+                }
+              },
+              child: Column(
+                children: [
+                  // Delete confirmation banner
+                  if (_isDeleteConfirmation) 
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      color: Colors.red.withOpacity(0.8),
+                      child: Text(
+                        'Delete confirmation: Zoom in again to confirm, swipe left to cancel',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: totalPages,
+                      itemBuilder: (context, pageIndex) {
+                        final pageItems = _getCurrentPageItems(pageIndex);
+                        return _buildTwoItemLayout(pageItems, currentPageItems);
+                      },
+                    ),
                   ),
-                ),
-                if (totalPages > 1) _buildPageIndicator(totalPages),
-              ],
+                  if (totalPages > 1) _buildPageIndicator(totalPages),
+                ],
+              ),
             ),
           );
         },
@@ -262,7 +638,6 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   }
 
   Widget _buildEmptyWardrobe() {
-    _ttsService.speak("Your wardrobe is empty. Scan clothing items to add them.");
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -279,7 +654,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     );
   }
 
-  Widget _buildTwoItemLayout(List<ClothingItem> items, ClothingProvider provider) {
+  Widget _buildTwoItemLayout(List<ClothingItem> items, List<ClothingItem> currentPageItems) {
     return Column(
       children: List.generate(2, (index) {
         if (index < items.length) {
@@ -288,10 +663,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
               padding: const EdgeInsets.all(16),
               child: _buildClothingItemCard(
                 items[index],
-                provider,
-                isGridView: false,
                 isFocused: index == _focusedIndex,
-                index: index, // <-- index'i iletin
+                index: index,
+                currentPageItems: currentPageItems,
               ),
             ),
           );
@@ -303,15 +677,13 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   }
 
   Widget _buildClothingItemCard(
-    ClothingItem item,
-    ClothingProvider provider, {
-    required bool isGridView,
+    ClothingItem item, {
     bool isFocused = false,
     required int index,
+    required List<ClothingItem> currentPageItems,
   }) {
-    final isSelected = _selectedItemId == item.id;
-    final isDeleteMode = widget.mode == WardrobeMode.delete;
     final isFlipped = _flippedIndex == index;
+    final isDeleteCandidate = _isDeleteConfirmation && _pendingDeleteId == item.id;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
@@ -334,264 +706,282 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
         );
       },
       child: isFlipped
-          ? _buildItemDetailsSheet(item, ScrollController(), key: ValueKey(true))
+          ? Card(
+              key: ValueKey(true),
+              elevation: 8,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Theme.of(context).colorScheme.primary,
+                      Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                    ],
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: DefaultTextStyle(
+                      style: TextStyle(
+                        fontSize: 24.0,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _getItemIcon(item),
+                            size: 80,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          Text(
+                            item.name,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 32.0,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          ..._buildTwoColumnDetails(item),
+                          
+                          const SizedBox(height: 16),
+                          
+                          // Status indicator - sola yaslanmış
+                          Row(
+                            children: [
+                              Icon(
+                                item.isClean ? Icons.check_circle : Icons.wash,
+                                size: 26,
+                                color: item.isClean ? Colors.green[200] : Colors.amber[200],
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                item.isClean ? "Ready to wear" : "Needs washing",
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 20.0,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
           : Card(
               key: ValueKey(false),
-              elevation: isSelected ? 8 : 4,
-              color: isFocused
-                  ? Colors.blue.shade100
-                  : isSelected
-                      ? (isDeleteMode && _deleteInitiated
-                          ? Colors.red.shade100
-                          : Theme.of(context).colorScheme.primaryContainer)
-                      : null,
-              child: Padding(
-                padding: EdgeInsets.all(isGridView ? 16 : 24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _getItemIcon(item),
-                      size: isGridView ? 48 : 64,
-                      color: Color(int.parse(item.colorHex.replaceAll('#', '0xFF'))),
-                    ),
-                    SizedBox(height: isGridView ? 12 : 16),
-                    Text(
-                      item.name,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: isGridView ? null : 20,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: isGridView ? 8 : 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
+              elevation: isFocused ? 8 : 4,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: isDeleteCandidate ? [
+                      Colors.red.withOpacity(0.8),
+                      Colors.red.withOpacity(0.6),
+                    ] : isFocused ? [
+                      Theme.of(context).colorScheme.primary,
+                      Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                    ] : [
+                      Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                    ],
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isDeleteCandidate) ...[
+                        Icon(
+                          Icons.delete_forever,
+                          size: 100,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(height: 20),
                         Text(
-                          'Size ${item.size}',
+                          'DELETE?',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: isGridView ? 12 : 16,
+                            fontSize: 28,
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
+                            height: 1.2,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                      ] else ...[
                         Icon(
-                          item.isClean ? Icons.check_circle : Icons.wash,
-                          size: isGridView ? 20 : 24,
-                          color: item.isClean ? Colors.green : Colors.amber,
+                          _getItemIcon(item),
+                          size: isFocused ? 100 : 85,
+                          color: isFocused ? Colors.white : Colors.white70,
                         ),
+                        const SizedBox(height: 20),
+                        Text(
+                          item.name,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: isFocused ? 28 : 24,
+                            color: isFocused ? Colors.white : Colors.white70,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Size ${item.size}',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: isFocused ? Colors.white : Colors.white70,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              item.isClean ? Icons.check_circle : Icons.wash,
+                              size: 36,
+                              color: isFocused 
+                                ? (item.isClean ? Colors.green[200] : Colors.amber[200])
+                                : (item.isClean ? Colors.green[100] : Colors.amber[100]),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          '${item.material} • ${item.texture}',
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: isFocused ? Colors.white70 : Colors.white54,
+                          ),
+                        ),
+                        if (!isFocused) ...[
+                          const SizedBox(height: 20),
+                          if (index < _focusedIndex) ...[
+                            Icon(
+                              Icons.swipe_up_rounded,
+                              size: 40,
+                              color: Colors.white70,
+                            ),
+                          ] else ...[
+                            Icon(
+                              Icons.swipe_down_rounded,
+                              size: 40,
+                              color: Colors.white70,
+                            ),
+                          ],
+                        ],
                       ],
-                    ),
-                    if (!isGridView) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        '${item.material} • ${item.texture}',
-                        style: TextStyle(fontSize: 14),
-                      ),
                     ],
-                    if (widget.mode != WardrobeMode.view) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _getModeActionText(isSelected),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontStyle: FontStyle.italic,
-                          color: isSelected ? Colors.red : null,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
             ),
     );
-  }
-
-  Widget _buildItemDetailsSheet(ClothingItem item, ScrollController controller, {Key? key}) {
-    return Card(
-      key: key,
-      elevation: 8,
-      color: Colors.white,
-      child: SingleChildScrollView(
-        controller: controller,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      _getItemIcon(item),
-                      size: 80,
-                      color: Color(int.parse(item.colorHex.replaceAll('#', '0xFF'))),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(item.name,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildDetailSection('Basic Information', [
-                'Color: ${item.color}',
-                'Size: ${item.size}',
-                'Material: ${item.material}',
-                'Texture: ${item.texture}',
-                'Status: ${item.isClean ? "Clean" : "Needs washing"}',
-              ]),
-              _buildDetailSection('Brand Information', [
-                'Manufacturer: ${item.manufacturer}',
-                'Collection: ${item.collection}',
-                'Recyclable: ${item.recyclable ? "Yes" : "No"}',
-              ]),
-              _buildDetailSection('Care Instructions',
-                item.laundryInstructions.entries
-                    .map((e) => '${e.key}: ${e.value}')
-                    .toList(),
-              ),
-              if (item.price > 0) ...[
-                _buildDetailSection('Pricing', [
-                  'Price: \$${item.price.toStringAsFixed(2)}',
-                  if (item.discount > 0)
-                    'Discount: ${item.discount}% off',
-                  if (item.discount > 0)
-                    'Final Price: \$${item.discountedPrice.toStringAsFixed(2)}',
-                ]),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailSection(String title, List<String> details) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        ...details.map((detail) => Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text(detail, style: Theme.of(context).textTheme.bodyLarge),
-        )),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  void _updateItemStatus(ClothingItem item, ClothingProvider provider) {
-    provider.toggleCleanStatus(item.id);
-    final newStatus = !item.isClean;
-    final message = newStatus
-        ? "${item.name} marked as clean"
-        : "${item.name} marked as needs washing";
-
-    _ttsService.speak(message);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildPageIndicator(int totalPages) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(
-          totalPages,
-          (index) => Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: index == _currentPage
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.primary.withOpacity(0.3),
+      child: Column(
+        children: [
+          if (totalPages > 1)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_currentPage > 0) ...[
+                  Icon(
+                    Icons.swipe_left_rounded,
+                    size: 32,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Previous page',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+                if (_currentPage > 0 && _currentPage < totalPages - 1)
+                  Text(
+                    ' • ',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 18),
+                  ),
+                if (_currentPage < totalPages - 1) ...[
+                  Text(
+                    'Next page',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.swipe_right_rounded,
+                    size: 32,
+                    color: Colors.grey[600],
+                  ),
+                ],
+              ],
+            ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              totalPages,
+              (index) => Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: index == _currentPage
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  String _getAppBarTitle() {
-    switch (widget.mode) {
-      case WardrobeMode.view:
-        return 'My Wardrobe';
-      case WardrobeMode.updateStatus:
-        return 'Update Status';
-      case WardrobeMode.delete:
-        return 'Remove Items';
-    }
-  }
-
-  void _speakItemDetails(ClothingItem item) {
-    String details = "${item.name} selected. Color: ${item.color}. Size: ${item.size}. ";
-    details += "Material: ${item.material}. ";
-    details += item.isClean ? "Status: Clean. " : "Status: Needs washing. ";
-
-    if (widget.mode == WardrobeMode.view) {
-      details += "Double tap for full details.";
-    } else if (widget.mode == WardrobeMode.updateStatus) {
-      details += "Double tap to change clean status.";
-    } else if (widget.mode == WardrobeMode.delete && _selectedItemId == item.id && _deleteInitiated) {
-      details += "Selected for removal. Double tap again to confirm.";
-    }
-
-    _ttsService.speak(details);
-  }
-
-  void _handleDeleteDoubleTap(ClothingItem item, ClothingProvider provider) {
-    if (_selectedItemId == item.id && _deleteInitiated) {
-      provider.removeItem(item.id);
-      _ttsService.speak("${item.name} removed from wardrobe.");
-      setState(() {
-        _selectedItemId = null;
-        _deleteInitiated = false;
-        _flippedIndex = null;
-      });
-    } else {
-      setState(() {
-        _selectedItemId = item.id;
-        _deleteInitiated = true;
-      });
-      _ttsService.speak("Double tap again to confirm removal of ${item.name}.");
-    }
-  }
-
   IconData _getItemIcon(ClothingItem item) {
-    // Basit örnek: türüne göre ikon seçimi
-    // Gerçek uygulamada item.type gibi bir alan varsa ona göre genişletin
     if (item.name.toLowerCase().contains('shirt')) return Icons.checkroom;
     if (item.name.toLowerCase().contains('pants')) return Icons.shopping_bag;
     if (item.name.toLowerCase().contains('shoe')) return Icons.directions_run;
     return Icons.checkroom;
   }
 
-  String _getModeActionText(bool isSelected) {
-    switch (widget.mode) {
-      case WardrobeMode.updateStatus:
-        return "Double tap to change clean status";
-      case WardrobeMode.delete:
-        return isSelected ? "Double tap again to confirm removal" : "Double tap to select for removal";
-      default:
-        return "";
-    }
-  }
-
   @override
   void dispose() {
     _pageController.dispose();
-    _ttsService.stop(); // TTS'i durdur
+    _ttsService.stop();
     _ttsService.dispose();
-    _pendingDetailToken++;
-    _autoDetailToken++; // Bekleyen otomatik detay okuma işlemlerini iptal et
+    _autoDetailToken++;
     super.dispose();
   }
 }

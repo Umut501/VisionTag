@@ -1,9 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:visiontag/screens/home_mode_screen.dart';
 import 'package:visiontag/screens/retail_mode_screen.dart';
-import 'package:visiontag/screens/settings_screen.dart';
 import 'package:visiontag/services/tts_service.dart';
-import 'package:visiontag/widgets/gesture_detector_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:visiontag/providers/gesture_provider.dart';
 import 'package:visiontag/providers/accessibility_provider.dart';
@@ -15,85 +14,112 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TtsService _ttsService = TtsService();
   int _selectedIndex = 0; // 0 for home mode, 1 for retail mode
+  Offset? _startFocalPoint;
+  double _initialScale = 1.0;
+  bool _hasReturnedFromSubScreen = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeTts();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _announceCurrentMode());
   }
 
-  Future<void> _initializeTts() async {
-    final accessibilityProvider = context.read<AccessibilityProvider>();
-    await _ttsService.initTts(accessibilityProvider: accessibilityProvider);
-
-    // Add a small delay to ensure the screen is fully loaded
-    await Future.delayed(const Duration(milliseconds: 500));
-    _speakWelcome();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _ttsService.dispose();
+    super.dispose();
   }
 
-  void _speakWelcome() {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && _hasReturnedFromSubScreen) {
+      // We've returned from a sub-screen
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _announceReturnToMainScreen();
+        _hasReturnedFromSubScreen = false;
+      });
+    }
+  }
+
+  void _announceCurrentMode() {
+    if (_hasReturnedFromSubScreen) {
+      _announceReturnToMainScreen();
+      _hasReturnedFromSubScreen = false;
+      return;
+    }
+    
+    final modeName = _selectedIndex == 0 ? "Home Mode" : "Retail Mode";
     _ttsService.speak(
-      "Welcome to VisionTag. ${_selectedIndex == 0 ? 'Home Mode' : 'Retail Mode'} is selected. "
-      "Swipe up or down to switch modes. Double tap to enter selected mode. "
-      "Long press for help. Triple tap for settings.",
+      "Welcome to VisionTag. You are currently in the main screen. $modeName is selected. "
+      "Double tap anywhere to enter $modeName. Swipe down to select retail mode. Pinch to exit application.",
+      priority: SpeechPriority.high,
+    );
+  }
+
+  void _announceReturnToMainScreen() async {
+    final modeName = _selectedIndex == 0 ? "Home Mode" : "Retail Mode";
+    await Future.delayed(const Duration(milliseconds: 700));
+    _ttsService.speak(
+      "You are currently in the main screen. $modeName is selected. "
+      "Double tap anywhere to enter $modeName. Swipe down to select retail mode. Pinch to exit application.",
       priority: SpeechPriority.high,
     );
   }
 
   void _switchMode(int direction) {
-    final provider = context.read<GestureProvider>();
-    provider.triggerHaptic(type: HapticType.selection);
-
     setState(() {
       _selectedIndex = (_selectedIndex + direction).clamp(0, 1);
     });
-
-    final modeName = _selectedIndex == 0 ? "Home Mode" : "Retail Mode";
-    _ttsService.speak("$modeName selected. Double tap to enter.",
-        priority: SpeechPriority.high);
+    
+    if (_selectedIndex == 1) {
+      _ttsService.speak("Retail Mode is selected. "
+      "Double tap anywhere to enter Retail Mode. Swipe up to select home mode.",
+          priority: SpeechPriority.high);
+    }
+    else {
+      _ttsService.speak("Home Mode is selected. "
+      "Double tap anywhere to enter Home Mode. Swipe down to select retail mode.",
+          priority: SpeechPriority.high);
+    }
   }
 
-  void _enterSelectedMode() {
-    final provider = context.read<GestureProvider>();
-    provider.triggerHaptic(type: HapticType.impact);
-
+  void _enterSelectedMode() async {
+    _hasReturnedFromSubScreen = true;
+    
     if (_selectedIndex == 0) {
       _ttsService.speak("Entering Home Mode", priority: SpeechPriority.high);
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const HomeModeScreen()),
       );
     } else {
       _ttsService.speak("Entering Retail Mode", priority: SpeechPriority.high);
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const RetailModeScreen()),
       );
     }
+    
+    // When we return, announce that we're back in main screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _announceReturnToMainScreen();
+      _hasReturnedFromSubScreen = false;
+    });
   }
 
-  void _openSettings() {
-    final provider = context.read<GestureProvider>();
-    provider.triggerHaptic(type: HapticType.impact);
-
-    _ttsService.speak("Opening settings", priority: SpeechPriority.high);
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const SettingsScreen()),
-    );
-  }
-
-  void _handleSectionTap(int sectionIndex) {
-    final provider = context.read<GestureProvider>();
-    provider.triggerHaptic(type: HapticType.selection);
-
-    setState(() => _selectedIndex = sectionIndex);
-    final modeName = sectionIndex == 0 ? "Home Mode" : "Retail Mode";
-    _ttsService.speak("$modeName selected. Double tap to enter.",
-        priority: SpeechPriority.normal);
+  void _handlePinch(double scale) {
+    if (scale < 0.7) {
+      _ttsService.speak("Exiting application, bye!", priority: SpeechPriority.high);
+      Future.delayed(const Duration(milliseconds: 3000), () {
+        exit(0);
+      });
+    }
   }
 
   @override
@@ -101,16 +127,31 @@ class _HomeScreenState extends State<HomeScreen> {
     final accessibilityProvider = context.watch<AccessibilityProvider>();
 
     return Scaffold(
-      body: GestureDetectorWidget(
-        onSwipeUp: () => _switchMode(-1),
-        onSwipeDown: () => _switchMode(1),
+      body: GestureDetector(
+        onScaleStart: (details) {
+          _initialScale = 1.0;
+          _startFocalPoint = details.focalPoint;
+        },
+        onScaleUpdate: (details) {
+          // Pinch to exit
+          if (details.scale < 0.7) {
+            _handlePinch(details.scale);
+          }
+          // Swipe detection (up/down for mode switch)
+          if (_startFocalPoint != null) {
+            final dy = details.focalPoint.dy - _startFocalPoint!.dy;
+            if (dy < -80) {
+              _switchMode(-1);
+              _startFocalPoint = null;
+            } else if (dy > 80) {
+              _switchMode(1);
+              _startFocalPoint = null;
+            }
+          }
+        },
+        // Global double tap - enters the currently selected mode
         onDoubleTap: _enterSelectedMode,
-        onLongPress: () => _speakWelcome(),
-        onTripleTap: _openSettings,
-        onShake: () => _ttsService.repeatLastSpoken(),
-        helpText:
-            "Home screen. Swipe up or down to switch between Home and Retail modes. "
-            "Double tap to enter the selected mode. Triple tap for settings.",
+        onLongPress: _announceCurrentMode,
         child: Column(
           children: [
             // Home Mode Section
@@ -124,22 +165,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Semantics(
                   label:
                       "Home Mode. Manage your wardrobe and scan clothing items at home.",
-                  hint: "Tap to select, double tap to enter",
+                  hint: "Tap to select, double tap anywhere to enter",
                   button: true,
                   selected: _selectedIndex == 0,
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () => _handleSectionTap(0),
-                      onDoubleTap: () {
-                        if (_selectedIndex == 0) {
-                          _enterSelectedMode();
-                        } else {
-                          setState(() => _selectedIndex = 0);
-                          _ttsService.speak(
-                              "Home Mode selected. Double tap again to enter.");
-                        }
+                      onTap: () {
+                        setState(() => _selectedIndex = 0);
+                        _ttsService.speak(
+                            "Home Mode selected. Double tap anywhere to enter.");
                       },
+                      // Remove individual onDoubleTap since we handle it globally
                       child: SizedBox(
                         width: double.infinity,
                         child: Center(
@@ -202,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
-                                    'Double tap to enter',
+                                    'Double tap anywhere to enter',
                                     style: TextStyle(
                                       color: Theme.of(context)
                                           .colorScheme
@@ -210,6 +247,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                ),
+                              ] else ...[
+                                const SizedBox(height: 16),
+                                const Icon(
+                                  Icons.swipe_up_rounded,
+                                  size: 40,
+                                  color: Colors.white70,
                                 ),
                               ],
                             ],
@@ -244,27 +288,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
                 color: _selectedIndex == 1
-                    ? Theme.of(context).colorScheme.secondary
-                    : Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.primary.withOpacity(0.3),
                 child: Semantics(
                   label:
                       "Retail Mode. Scan and explore clothing items while shopping.",
-                  hint: "Tap to select, double tap to enter",
+                  hint: "Tap to select, double tap anywhere to enter",
                   button: true,
                   selected: _selectedIndex == 1,
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () => _handleSectionTap(1),
-                      onDoubleTap: () {
-                        if (_selectedIndex == 1) {
-                          _enterSelectedMode();
-                        } else {
-                          setState(() => _selectedIndex = 1);
-                          _ttsService.speak(
-                              "Retail Mode selected. Double tap again to enter.");
-                        }
+                      onTap: () {
+                        setState(() => _selectedIndex = 1);
+                        _ttsService.speak(
+                            "Retail Mode selected. Double tap anywhere to enter.");
                       },
+                      // Remove individual onDoubleTap since we handle it globally
                       child: SizedBox(
                         width: double.infinity,
                         child: Center(
@@ -275,7 +315,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Icons.shopping_bag,
                                 size: _selectedIndex == 1 ? 100 : 80,
                                 color:
-                                    Theme.of(context).colorScheme.onSecondary,
+                                    Theme.of(context).colorScheme.onPrimary,
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -286,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ?.copyWith(
                                       color: Theme.of(context)
                                           .colorScheme
-                                          .onSecondary,
+                                          .onPrimary,
                                       fontSize: _selectedIndex == 1
                                           ? 32 *
                                               accessibilityProvider
@@ -309,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ?.copyWith(
                                         color: Theme.of(context)
                                             .colorScheme
-                                            .onSecondary,
+                                            .onPrimary,
                                       ),
                                 ),
                               ),
@@ -323,19 +363,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                   decoration: BoxDecoration(
                                     color: Theme.of(context)
                                         .colorScheme
-                                        .onSecondary
+                                        .onPrimary
                                         .withOpacity(0.2),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
-                                    'Double tap to enter',
+                                    'Double tap anywhere to enter',
                                     style: TextStyle(
                                       color: Theme.of(context)
                                           .colorScheme
-                                          .onSecondary,
+                                          .onPrimary,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                ),
+                              ] else ...[
+                                const SizedBox(height: 16),
+                                const Icon(
+                                  Icons.swipe_down_rounded,
+                                  size: 40,
+                                  color: Colors.white70,
                                 ),
                               ],
                             ],
@@ -351,11 +398,5 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _ttsService.dispose();
-    super.dispose();
   }
 }

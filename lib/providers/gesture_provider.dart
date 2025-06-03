@@ -6,9 +6,7 @@ class GestureProvider with ChangeNotifier {
   bool _enableSwipeNavigation = true;
   bool _enableShakeToRepeat = true;
   bool _enableLongPressHelp = true;
-  bool _enableDoubleTapBack = true;
-  bool _enableTripleTapHome = true;
-  
+  bool _enableDoubleTapBack = true;  
   // Haptic feedback settings
   bool _enableHapticFeedback = true;
   HapticIntensity _hapticIntensity = HapticIntensity.medium;
@@ -18,7 +16,6 @@ class GestureProvider with ChangeNotifier {
   bool get enableShakeToRepeat => _enableShakeToRepeat;
   bool get enableLongPressHelp => _enableLongPressHelp;
   bool get enableDoubleTapBack => _enableDoubleTapBack;
-  bool get enableTripleTapHome => _enableTripleTapHome;
   bool get enableHapticFeedback => _enableHapticFeedback;
   HapticIntensity get hapticIntensity => _hapticIntensity;
 
@@ -40,11 +37,6 @@ class GestureProvider with ChangeNotifier {
 
   void setDoubleTapBack(bool value) {
     _enableDoubleTapBack = value;
-    notifyListeners();
-  }
-
-  void setTripleTapHome(bool value) {
-    _enableTripleTapHome = value;
     notifyListeners();
   }
 

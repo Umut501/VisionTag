@@ -17,7 +17,6 @@ class GestureDetectorWidget extends StatefulWidget {
   final VoidCallback? onSwipeDown;
   final VoidCallback? onShake;
   final VoidCallback? onDoubleTapTwoFingers;
-  final VoidCallback? onTripleTap;
   final bool enableShake;
   final String? helpText;
 
@@ -33,7 +32,6 @@ class GestureDetectorWidget extends StatefulWidget {
     this.onSwipeDown,
     this.onShake,
     this.onDoubleTapTwoFingers,
-    this.onTripleTap,
     this.enableShake = true,
     this.helpText,
   }) : super(key: key);
@@ -104,8 +102,6 @@ class _GestureDetectorWidgetState extends State<GestureDetectorWidget> {
         widget.onTap?.call();
       } else if (_tapCount == 2) {
         widget.onDoubleTap?.call();
-      } else if (_tapCount >= 3 && widget.onTripleTap != null) {
-        widget.onTripleTap!.call();
       }
       _tapCount = 0;
     });

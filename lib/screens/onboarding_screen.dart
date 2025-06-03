@@ -55,7 +55,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     OnboardingPage(
       title: "Quick Navigation",
       description:
-          "Double tap with two fingers to go back. Triple tap to return home.",
+          "Double tap with two fingers to go back.",
       instruction: "Swipe right to finish the tutorial",
       gestureType: GestureType.swipeRight,
     ),

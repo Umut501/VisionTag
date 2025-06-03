@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:visiontag/models/clothing_item.dart';
-import 'package:visiontag/services/tts_service.dart';
+import '../models/clothing_item.dart';
+import '../services/tts_service.dart';
 
 class ClothingItemDetails extends StatelessWidget {
   final ClothingItem item;
@@ -15,6 +15,17 @@ class ClothingItemDetails extends StatelessWidget {
     this.onScanAnother,
     this.onShare,
   }) : super(key: key);
+
+  String _formatPrice() {
+    if (item.discount > 0) {
+      final originalPrice = item.price;
+      final discountAmount = originalPrice * (item.discount / 100);
+      final finalPrice = originalPrice - discountAmount;
+      return '\$${finalPrice.toStringAsFixed(2)} (${item.discount.toInt()}% off)';
+    } else {
+      return '\$${item.price.toStringAsFixed(2)}';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +52,10 @@ class ClothingItemDetails extends StatelessWidget {
                 Expanded(
                   child: Text(
                     item.name,
-                    style: Theme.of(context).textTheme.headlineSmall,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -56,9 +70,7 @@ class ClothingItemDetails extends StatelessWidget {
               _buildDetailRow('Renk', item.color),
               _buildDetailRow('Beden', item.size),
               _buildDetailRow('Doku', item.texture),
-              _buildDetailRow('Fiyat', '\$${item.price.toStringAsFixed(2)}'),
-              if (item.discount > 0)
-                _buildDetailRow('İndirim', '%${item.discount}'),
+              _buildDetailRow('Fiyat', _formatPrice()), // DÜZELTME: price formatı
             ],
           ),
 
@@ -97,7 +109,7 @@ class ClothingItemDetails extends StatelessWidget {
                       onAddToWardrobe!();
                       ttsService.speak('Gardıroba ekleniyor');
                     },
-                    child: const Text('Gardıroba Ekle'),
+                    child: const Text('Gardıroba Ekle', style: TextStyle(fontSize: 18)),
                   ),
                 if (onScanAnother != null)
                   ElevatedButton(
@@ -105,15 +117,15 @@ class ClothingItemDetails extends StatelessWidget {
                       onScanAnother!();
                       ttsService.speak('Başka bir öğe tara');
                     },
-                    child: const Text('Başka Tara'),
+                    child: const Text('Başka Tara', style: TextStyle(fontSize: 18)),
                   ),
                 if (onShare != null)
                   ElevatedButton(
                     onPressed: () {
-                      onShare!();
+                      onScanAnother!();
                       ttsService.speak('Öğe detayları paylaşılıyor');
                     },
-                    child: const Text('Paylaş'),
+                    child: const Text('Paylaş', style: TextStyle(fontSize: 18)),
                   ),
               ],
             ),
@@ -132,7 +144,10 @@ class ClothingItemDetails extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           ...children,
@@ -151,11 +166,17 @@ class ClothingItemDetails extends StatelessWidget {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
             ),
           ),
           Expanded(
-            child: Text(value),
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 20),
+            ),
           ),
         ],
       ),

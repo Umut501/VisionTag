@@ -40,9 +40,4 @@ class HapticService {
   static void swipe() {
     HapticFeedback.lightImpact();
   }
-
-  /// Üç kez dokunma için titreşim sağlar
-  static void tripleTap() {
-    HapticFeedback.mediumImpact();
-  }
 }
