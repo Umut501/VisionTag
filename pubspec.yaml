@@ -19,6 +19,8 @@ dependencies:
   path_provider: ^2.0.15
   share_plus: ^7.0.2
   sensors_plus: ^6.1.1
+  flutter_svg: ^2.0.7
+  flutter_launcher_icons: ^0.13.1
 
 dev_dependencies:
   flutter_test:
@@ -35,3 +37,9 @@ flutter:
           weight: 700
         - asset: assets/fonts/Roboto-Light.ttf
           weight: 300
+  assets:
+    - assets/images/
+
+flutter_launcher_icons:
+  image_path: "assets/icons/icon.svg"
+  android: true

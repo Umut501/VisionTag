@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
+import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:visiontag/screens/wardrobe_screen.dart';
 import 'package:visiontag/screens/qr_scanner_screen.dart';
 import 'package:visiontag/services/tts_service.dart';
 import 'package:visiontag/services/haptic_service.dart';
+import '../providers/clothing_provider.dart';
 import 'dart:io';
 import 'package:sensors_plus/sensors_plus.dart';
+import '../models/clothing_item.dart';
+import '../models/clothing_item_details.dart';
 
 class HomeModeScreen extends StatefulWidget {
   const HomeModeScreen({Key? key}) : super(key: key);
@@ -19,6 +24,8 @@ class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObse
   final TtsService _ttsService = TtsService();
   int _selectedIndex = 0; // 0: Wardrobe, 1: Scan Item
   Offset? _startFocalPoint;
+  bool _announcementMade = false;
+  ClothingItem? _scannedItem;
   double _initialScale = 1.0;
   StreamSubscription? _accelerometerSubscription;
   DateTime? _lastShakeTime;
@@ -113,6 +120,97 @@ class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObse
     }
   }
 
+  void _confirmAddToWardrobe() async {
+    final provider = Provider.of<ClothingProvider>(context, listen: false);
+    final success = await provider.addItem(_scannedItem!);
+
+    if (success) {
+      HapticService.success();
+      _ttsService.speak(
+        "Success! ${_scannedItem!.name} added to wardrobe",
+        priority: SpeechPriority.high,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Added to wardrobe')),
+      );
+
+      // Clear the scanned item after adding
+      setState(() {
+        _scannedItem = null;
+        _announcementMade = false; // Reset so announcement plays again
+      });
+    }
+  }
+
+  Future<void> _scanQrCode() async {
+    HapticService.selection();
+    _ttsService.speak("Opening scanner", priority: SpeechPriority.high);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QRScannerScreen(
+          onScan: (data) {
+            _processScannedItem(data);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _scanAnother() {
+    HapticService.swipe();
+    setState(() {
+      _scannedItem = null;
+      _announcementMade = false; // Reset so announcement plays again
+    });
+    _ttsService.speak(
+      "Ready to scan another item",
+      priority: SpeechPriority.high,
+    );
+    _scanQrCode();
+  }
+
+  void _shareItem() {
+    if (_scannedItem == null) return;
+
+    HapticService.selection();
+    _ttsService.speak(
+      "Sharing ${_scannedItem!.name} details",
+      priority: SpeechPriority.high,
+    );
+
+    // In a real app, implement sharing functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sharing feature coming soon')),
+    );
+  }
+
+  void _processScannedItem(String data) {
+    try {
+      final itemData = json.decode(data);
+      setState(() {
+        _scannedItem = ClothingItem.fromJson(
+          Map<String, dynamic>.from(itemData),
+        );
+      });
+
+      HapticService.success();
+      _ttsService.speak(
+        "Item scanned successfully. ${_scannedItem!.accessibilityDescription}",
+        priority: SpeechPriority.high,
+      );
+    } catch (e) {
+      HapticService.error();
+      _ttsService.speak("Invalid QR code. Please try again", priority: SpeechPriority.high);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid QR code format')),
+      );
+    }
+  }
+
   void _enterSelected() async {
     _hasReturnedFromSubScreen = true;
     
@@ -131,8 +229,8 @@ class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObse
         MaterialPageRoute(
           builder: (context) => QRScannerScreen(
             onScan: (data) {
-              Navigator.pop(context);
-              _ttsService.speak("Item scanned successfully");
+              _processScannedItem(data);
+              //_ttsService.speak("Item scanned successfully");
             },
           ),
         ),
@@ -153,6 +251,105 @@ class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObse
     );
   }
 
+  void _addToWardrobe() {
+    if (_scannedItem == null) return;
+
+    final provider = Provider.of<ClothingProvider>(context, listen: false);
+
+    if (provider.getItemById(_scannedItem!.id) != null) {
+      HapticService.warning();
+      _ttsService.speak(
+        "This item is already in your wardrobe",
+        priority: SpeechPriority.high,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item already in wardrobe')),
+      );
+    } else {
+      _showAddToWardrobeConfirmation();
+    }
+  }
+
+  void _showAddToWardrobeConfirmation() {
+    if (_scannedItem == null) return;
+
+    HapticService.medium();
+    _ttsService.speak(
+      "Add ${_scannedItem!.name} to wardrobe? "
+      "Swipe up for yes, swipe down for no.",
+      priority: SpeechPriority.high,
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => GestureDetector(
+        onVerticalDragEnd: (details) {
+          if (details.primaryVelocity == null) return;
+
+          // Swipe up - Yes
+          if (details.primaryVelocity! < -200) {
+            Navigator.pop(context);
+            _confirmAddToWardrobe();
+          }
+          // Swipe down - No
+          else if (details.primaryVelocity! > 200) {
+            Navigator.pop(context);
+            HapticService.light();
+            _ttsService.speak("Cancelled", priority: SpeechPriority.high);
+          }
+        },
+        child: AlertDialog(
+          title: const Text('Add to Wardrobe'),
+          content: Text('Add ${_scannedItem!.name} to your wardrobe?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                HapticService.light();
+                _ttsService.speak("Cancelled", priority: SpeechPriority.high);
+              },
+              child: const Text('No'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _confirmAddToWardrobe();
+              },
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildItemDetails() {
+    if (_scannedItem == null) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity == null) return;
+
+        // Swipe left - add to wardrobe
+        if (details.primaryVelocity! < -200) {
+          _addToWardrobe();
+        }
+        // Swipe right - scan another
+        else if (details.primaryVelocity! > 200) {
+          _scanAnother();
+        }
+      },
+      onLongPress: _shareItem,
+      child: ClothingItemDetails(
+        item: _scannedItem!,
+        onAddToWardrobe: _addToWardrobe,
+        onScanAnother: _scanAnother,
+        onShare: _shareItem,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,8 +363,8 @@ class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObse
             tooltip: 'Help',
           ),
         ],
-      ),
-      body: GestureDetector(
+      ), //_scannedItem == null ? _buildSelectionInterface() : _buildItemDetails()
+      body: _scannedItem == null ? GestureDetector(
         onScaleStart: (details) {
           _initialScale = 1.0;
           _startFocalPoint = details.focalPoint;
@@ -383,7 +580,7 @@ class _HomeModeScreenState extends State<HomeModeScreen> with WidgetsBindingObse
             ),
           ],
         ),
-      ),
+      ) : _buildItemDetails()
     );
   }
 }

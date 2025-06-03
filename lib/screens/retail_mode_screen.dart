@@ -472,6 +472,7 @@ class _RetailModeScreenState extends State<RetailModeScreen> {
       "Ready to scan another item",
       priority: SpeechPriority.high,
     );
+    _scanQrCode();
   }
 
   void _shareItem() {

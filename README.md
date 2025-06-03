@@ -183,3 +183,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Future work: 
 - Make camera light aware so it will open the flash automatically if its dark.
 - Make it adaptable: assign own gesture.
+
+##  Icon credits
+- eye qr code by Template from <a href="https://thenounproject.com/browse/icons/term/eye-qr-code/" target="_blank" title="eye qr code Icons">Noun Project</a> (CC BY 3.0)
+
+
+##  useful commands
+- setting new app icon -> flutter pub get then flutter pub run flutter_launcher_icons:main

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:visiontag/models/clothing_item.dart';
 import 'package:visiontag/providers/clothing_provider.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:visiontag/services/tts_service.dart';
 import 'package:visiontag/services/haptic_service.dart';
+
 import 'dart:math';
 import 'dart:io';
 
@@ -456,7 +458,7 @@ String _ordinal(int n) {
                   
                   // Two finger swipes for page navigation
                   if (_isMultiTouch && dx.abs() > dy.abs() && dx.abs() > 50) {
-                    if (dx > 0) {
+                    if (dx < 0) {
                       if (_currentPage < totalPages - 1) {
                         setState(() {
                           _currentPage++;
@@ -733,12 +735,17 @@ String _ordinal(int n) {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Icon(
-                            _getItemIcon(item),
+                          SvgPicture.asset("assets/images/${_getItemIconSvg(item)}.svg", 
+                            width: 80, 
+                            height: 80, 
+                            color: Colors.white,
+                            placeholderBuilder: (context) => CircularProgressIndicator(),),
+                          /*Icon(
+                            _getItemIconSvg(item),
                             size: 80,
                             color: Colors.white,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 16)*/
                           
                           Text(
                             item.name,
@@ -783,7 +790,7 @@ String _ordinal(int n) {
                 ),
               ),
             )
-          : Card(
+          : Expanded(child: Card(
               key: ValueKey(false),
               elevation: isFocused ? 8 : 4,
               child: Container(
@@ -812,7 +819,7 @@ String _ordinal(int n) {
                       if (isDeleteCandidate) ...[
                         Icon(
                           Icons.delete_forever,
-                          size: 100,
+                          size: 80,
                           color: Colors.white,
                         ),
                         const SizedBox(height: 20),
@@ -827,11 +834,11 @@ String _ordinal(int n) {
                           ),
                         ),
                       ] else ...[
-                        Icon(
-                          _getItemIcon(item),
-                          size: isFocused ? 100 : 85,
-                          color: isFocused ? Colors.white : Colors.white70,
-                        ),
+                        SvgPicture.asset("assets/images/${_getItemIconSvg(item)}.svg", 
+                            width: 80, 
+                            height: 80, 
+                            color: Colors.white,
+                            placeholderBuilder: (context) => CircularProgressIndicator(),),
                         const SizedBox(height: 20),
                         Text(
                           item.name,
@@ -875,7 +882,7 @@ String _ordinal(int n) {
                             color: isFocused ? Colors.white70 : Colors.white54,
                           ),
                         ),
-                        if (!isFocused) ...[
+                        /*if (!isFocused) ...[    removed because it overflows on small screens
                           const SizedBox(height: 20),
                           if (index < _focusedIndex) ...[
                             Icon(
@@ -890,13 +897,13 @@ String _ordinal(int n) {
                               color: Colors.white70,
                             ),
                           ],
-                        ],
+                        ],*/
                       ],
                     ],
                   ),
                 ),
               ),
-            ),
+            ),),
     );
   }
 
@@ -911,7 +918,7 @@ String _ordinal(int n) {
               children: [
                 if (_currentPage > 0) ...[
                   Icon(
-                    Icons.swipe_left_rounded,
+                    Icons.swipe_right_rounded,
                     size: 32,
                     color: Colors.grey[600],
                   ),
@@ -939,7 +946,7 @@ String _ordinal(int n) {
                   ),
                   const SizedBox(width: 8),
                   Icon(
-                    Icons.swipe_right_rounded,
+                    Icons.swipe_left_rounded,
                     size: 32,
                     color: Colors.grey[600],
                   ),
@@ -974,6 +981,19 @@ String _ordinal(int n) {
     if (item.name.toLowerCase().contains('pants')) return Icons.shopping_bag;
     if (item.name.toLowerCase().contains('shoe')) return Icons.directions_run;
     return Icons.checkroom;
+  }
+
+  String _getItemIconSvg(ClothingItem item) {
+    if (item.name.toLowerCase().contains('shirt')) return "shirt";
+    if (item.name.toLowerCase().contains('shorts')) return "shorts";
+    if (item.name.toLowerCase().contains('pants')) return "pants";
+    if (item.name.toLowerCase().contains('shoes')) return "shoes";
+    if (item.name.toLowerCase().contains('sweater')) return "sweater";
+    if (item.name.toLowerCase().contains('hoodie')) return "hoodie";
+    if (item.name.toLowerCase().contains('jacket')) return "jacket";
+    if (item.name.toLowerCase().contains('socks')) return "socks_2";
+    if (item.name.toLowerCase().contains('vest')) return "vest";
+    return "hanger";
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/clothing_item.dart';
 import '../services/tts_service.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class ClothingItemDetails extends StatelessWidget {
   final ClothingItem item;
@@ -27,42 +28,75 @@ class ClothingItemDetails extends StatelessWidget {
     }
   }
 
+  String _getItemIconSvg(ClothingItem item) {
+    if (item.name.toLowerCase().contains('shirt')) return "shirt";
+    if (item.name.toLowerCase().contains('shorts')) return "shorts";
+    if (item.name.toLowerCase().contains('pants')) return "pants";
+    if (item.name.toLowerCase().contains('shoes')) return "shoes";
+    if (item.name.toLowerCase().contains('sweater')) return "sweater";
+    if (item.name.toLowerCase().contains('hoodie')) return "sweater";
+    return "tie";
+  }
+
   @override
   Widget build(BuildContext context) {
     final ttsService = TtsService();
 
-    return SingleChildScrollView(
+    return Card(
+  key: ValueKey(true),
+  elevation: 8,
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+  clipBehavior: Clip.antiAlias,
+  child: Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Theme.of(context).colorScheme.primary,
+          Theme.of(context).colorScheme.primary.withOpacity(0.85),
+        ],
+      ),
+    ),
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Başlık ve renk önizlemesi
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: Color(int.parse(item.colorHex.replaceAll('#', '0xFF'))),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+          // Header with icon and title
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white24,
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    item.name,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                padding: const EdgeInsets.all(12),
+                child: SvgPicture.asset(
+                  "assets/images/${_getItemIconSvg(item)}.svg",
+                  width: 60,
+                  height: 60,
+                  color: Colors.white,
+                  placeholderBuilder: (context) => const CircularProgressIndicator(),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  item.name,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ],
           ),
 
-          // Temel bilgiler
+          const SizedBox(height: 24),
+
+          // Basic Info Section
           _buildSection(
             context,
             title: 'Temel Bilgiler',
@@ -70,11 +104,13 @@ class ClothingItemDetails extends StatelessWidget {
               _buildDetailRow('Renk', item.color),
               _buildDetailRow('Beden', item.size),
               _buildDetailRow('Doku', item.texture),
-              _buildDetailRow('Fiyat', _formatPrice()), // DÜZELTME: price formatı
+              _buildDetailRow('Fiyat', _formatPrice()),
             ],
           ),
 
-          // Malzeme ve bakım
+          const SizedBox(height: 16),
+
+          // Material and Care
           _buildSection(
             context,
             title: 'Malzeme ve Bakım',
@@ -87,7 +123,9 @@ class ClothingItemDetails extends StatelessWidget {
             ],
           ),
 
-          // Marka bilgileri
+          const SizedBox(height: 16),
+
+          // Brand Info
           _buildSection(
             context,
             title: 'Marka Bilgileri',
@@ -97,42 +135,56 @@ class ClothingItemDetails extends StatelessWidget {
             ],
           ),
 
-          // Eylem düğmeleri
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                if (onAddToWardrobe != null)
-                  ElevatedButton(
-                    onPressed: () {
-                      onAddToWardrobe!();
-                      ttsService.speak('Gardıroba ekleniyor');
-                    },
-                    child: const Text('Gardıroba Ekle', style: TextStyle(fontSize: 18)),
+          const SizedBox(height: 24),
+
+          // Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              if (onAddToWardrobe != null)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    textStyle: const TextStyle(fontSize: 16),
                   ),
-                if (onScanAnother != null)
-                  ElevatedButton(
-                    onPressed: () {
-                      onScanAnother!();
-                      ttsService.speak('Başka bir öğe tara');
-                    },
-                    child: const Text('Başka Tara', style: TextStyle(fontSize: 18)),
+                  onPressed: () {
+                    onAddToWardrobe!();
+                    ttsService.speak('Adding item to wardrobe');
+                  },
+                  icon: const Icon(Icons.check),
+                  label: const Text('Add'),
+                ),
+              if (onScanAnother != null)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Theme.of(context).colorScheme.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    textStyle: const TextStyle(fontSize: 16),
                   ),
-                if (onShare != null)
-                  ElevatedButton(
-                    onPressed: () {
-                      onScanAnother!();
-                      ttsService.speak('Öğe detayları paylaşılıyor');
-                    },
-                    child: const Text('Paylaş', style: TextStyle(fontSize: 18)),
-                  ),
-              ],
-            ),
+                  onPressed: () {
+                    onScanAnother!();
+                    ttsService.speak('Scanning another item');
+                  },
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('Rescan'),
+                ),
+            ],
           ),
         ],
       ),
-    );
+    ),
+  ),
+);
+
   }
 
   Widget _buildSection(BuildContext context,
