@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -7,7 +9,8 @@ import 'package:visiontag/models/clothing_item.dart';
 import 'package:visiontag/services/tts_service.dart';
 import 'package:visiontag/services/haptic_service.dart';
 import 'package:visiontag/utils/qr_generator.dart';
-import 'dart:io';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:async';
 
 class RetailQRGeneratorScreen extends StatefulWidget {
   const RetailQRGeneratorScreen({Key? key}) : super(key: key);
@@ -102,10 +105,55 @@ class _RetailQRGeneratorScreenState extends State<RetailQRGeneratorScreen> {
     'Steam iron', 'Iron inside out', 'Use pressing cloth'
   ];
 
+  StreamSubscription? _accelerometerSubscription;
+  DateTime? _lastShakeTime;
+  final double _shakeThreshold = 15.0;
+
   @override
   void initState() {
     super.initState();
     _initializeTts();
+    _initShakeDetection();
+  }
+
+  @override
+  void dispose() {
+    _accelerometerSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _initShakeDetection() {
+    _accelerometerSubscription = accelerometerEvents.listen((event) {
+      double acceleration = sqrt(event.x * event.x + event.y * event.y + event.z * event.z) - 9.81;
+      if (acceleration > _shakeThreshold) {
+        final now = DateTime.now();
+        if (_lastShakeTime == null || now.difference(_lastShakeTime!).inMilliseconds > 1200) {
+          _lastShakeTime = now;
+          HapticService.medium();
+          _showHelp();
+        }
+      }
+    });
+  }
+
+  void _showHelp() {
+    if (_qrData == null) {
+      _ttsService.speak(
+        "QR code generation help. You are on the Retail QR Code Generator form. "
+        "Swipe up and down to move between fields. "
+        "Double tap to edit a field. "
+        "When all required fields are filled, pinch out to generate the QR code. "
+        "Pinch in to exit. "
+        "Swipe left to go back. "
+        "Shake your device for help.",
+        priority: SpeechPriority.high,
+      );
+    } else {
+      _ttsService.speak(
+        "QR code screen. Double tap to share. Swipe left to go back. Pinch to exit. Shake your device for help.",
+        priority: SpeechPriority.high,
+      );
+    }
   }
 
   Future<void> _initializeTts() async {
@@ -122,7 +170,7 @@ class _RetailQRGeneratorScreenState extends State<RetailQRGeneratorScreen> {
       "Single finger swipe left to go back. "
       "Pinch to exit application. "
       "When you finish all required fields, pinch out to generate the QR code. "
-      "Long press for help.",
+      "Shake your device for help.",
       priority: SpeechPriority.high,
     );
   }
@@ -878,7 +926,6 @@ class _RetailQRGeneratorScreenState extends State<RetailQRGeneratorScreen> {
         ),
       ),
       body: _qrData == null
-          // FORM EKRANI: Gesture ile alanlar arası geçiş, pinch ile QR oluşturma/çıkış
           ? GestureDetector(
               onScaleStart: _isDialogOpen ? null : (details) {
                 _startFocalPoint = details.focalPoint;
@@ -929,17 +976,6 @@ class _RetailQRGeneratorScreenState extends State<RetailQRGeneratorScreen> {
               onDoubleTap: _isDialogOpen ? null : () {
                 _editCurrentField();
               },
-              onLongPress: _isDialogOpen ? null : () {
-                _ttsService.speak(
-                  "You are on the Retail QR Code Generator form. "
-                  "Swipe up and down to move between fields. "
-                  "Double tap to edit a field. "
-                  "When all required fields are filled, pinch out to generate the QR code. "
-                  "Pinch in to exit. "
-                  "Swipe left to go back.",
-                  priority: SpeechPriority.high,
-                );
-              },
               behavior: HitTestBehavior.opaque,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -989,12 +1025,6 @@ class _RetailQRGeneratorScreenState extends State<RetailQRGeneratorScreen> {
               onDoubleTap: () {
                 _handleQRAction();
                 _ttsService.speak("Sharing QR code for ${_nameController.text}");
-              },
-              onLongPress: () {
-                _ttsService.speak(
-                  "QR code screen. Double tap to share. Swipe left to go back. Pinch to exit.",
-                  priority: SpeechPriority.high,
-                );
               },
               behavior: HitTestBehavior.opaque, // <-- Bunu ekle
               child: Container(
