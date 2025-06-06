@@ -56,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     final modeName = _selectedIndex == 0 ? "Home Mode" : "Retail Mode";
     _ttsService.speak(
-      "Welcome to VisionTag. You are currently in the main screen. $modeName is selected. "
+      "Welcome to VisionTag. You can manage your wardrobe in home mode and you can create qr codes in the retail mode. You are currently in the main screen. $modeName is selected. "
       "Double tap anywhere to enter $modeName. Swipe down to select retail mode. Pinch to exit application.",
       priority: SpeechPriority.high,
     );
