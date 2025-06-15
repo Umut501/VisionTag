@@ -172,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () {
-                        setState(() => _selectedIndex = 0);
+                        //setState(() => _selectedIndex = 0);
                         _ttsService.speak(
                             "Home Mode selected. Double tap anywhere to enter.");
                       },
@@ -300,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     color: Colors.transparent,
                     child: InkWell(
                       onTap: () {
-                        setState(() => _selectedIndex = 1);
+                        //setState(() => _selectedIndex = 1);
                         _ttsService.speak(
                             "Retail Mode selected. Double tap anywhere to enter.");
                       },

@@ -13,6 +13,8 @@ class OnboardingScreen extends StatefulWidget {
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
+int statusPage = 0;
+
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final TtsService _ttsService = TtsService();
   final PageController _pageController = PageController();
@@ -23,8 +25,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title: "Welcome to VisionTag",
       description:
           "Your accessible wardrobe assistant. Let's learn how to use the app with simple gestures.",
-      instruction: "Swipe right to continue",
-      gestureType: GestureType.swipeRight,
+      instruction: "Swipe left to continue",
+      gestureType: GestureType.swipeLeft,
     ),
     OnboardingPage(
       title: "Basic Navigation",
@@ -34,30 +36,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       gestureType: GestureType.doubleTap,
     ),
     OnboardingPage(
-      title: "Swipe Gestures",
-      description: "Swipe left or right to navigate between screens and pages.",
-      instruction: "Swipe right to continue",
-      gestureType: GestureType.swipeRight,
-    ),
-    OnboardingPage(
-      title: "Help Gesture",
+      title: "Change Item Status",
       description:
-          "Long press anywhere for contextual help about the current screen.",
-      instruction: "Try long pressing now",
+          "Hold anywhere on the screen to change item status.",
+      instruction: "Try holding anywhere on the screen.",
       gestureType: GestureType.longPress,
     ),
     OnboardingPage(
-      title: "Repeat Gesture",
-      description: "Shake your device gently to repeat the last spoken text.",
+      title: "Swipe Gestures",
+      description: "Fling left or right to browse item pages.",
+      instruction: "Fling left to continue",
+      gestureType: GestureType.swipeLeft,
+    ),
+    OnboardingPage(
+      title: "Help Gesture",
+      description: "Shake your device gently for help.",
       instruction: "Try shaking your device",
       gestureType: GestureType.shake,
     ),
     OnboardingPage(
-      title: "Quick Navigation",
-      description:
-          "Double tap with two fingers to go back.",
-      instruction: "Swipe right to finish the tutorial",
-      gestureType: GestureType.swipeRight,
+      title: "Tutorial Complete",
+      description: "Swipe right to go to previous page.",
+      instruction: "Double tap to finish the tutorial",
+      gestureType: GestureType.check,
     ),
   ];
 
@@ -105,7 +106,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await prefs.setBool('isFirstTime', false);
 
     _ttsService.speak(
-      "Tutorial complete! Welcome to VisionTag. Taking you to the home screen.",
+      "Tutorial complete! Welcome to VisionTag",
       priority: SpeechPriority.high,
     );
 
@@ -123,23 +124,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: GestureDetectorWidget(
-        onSwipeRight: _nextPage,
-        onSwipeLeft: _previousPage,
+        onSwipeRight: _previousPage,
+        onSwipeLeft: _nextPage,
         onDoubleTap: () {
           if (_currentPage == 1) {
             _ttsService.speak("Great! You've mastered double tap.",
                 priority: SpeechPriority.high);
             Future.delayed(const Duration(seconds: 2), _nextPage);
+          } else if (_currentPage == 5) {
+            _completeOnboarding();
           }
         },
         onLongPress: () {
           if (_currentPage == 3) {
-            _ttsService.speak("Excellent! You've triggered the help gesture.",
+            _ttsService.speak("Excellent!",
                 priority: SpeechPriority.high);
             Future.delayed(const Duration(seconds: 3), _nextPage);
-          } else {
-            _ttsService.speak("Long press for help on any screen",
+          } else if (_currentPage == 2) {
+            statusPage = 1;
+            _ttsService.speak("Excellent!",
                 priority: SpeechPriority.high);
+            Future.delayed(const Duration(seconds: 1), _nextPage);
           }
         },
         onShake: () {
@@ -233,14 +238,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          if (_currentPage == _pages.length - 1)
+          /*if (_currentPage == _pages.length - 1)
             ElevatedButton(
               onPressed: _completeOnboarding,
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 child: Text('Start Using VisionTag'),
               ),
-            ),
+            ),*/
         ],
       ),
     );
@@ -250,10 +255,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     switch (type) {
       case GestureType.swipeRight:
         return Icons.swipe_right;
+      case GestureType.swipeLeft:
+        return Icons.swipe_left;
+      case GestureType.check:
+        return Icons.check_circle;
       case GestureType.doubleTap:
         return Icons.touch_app;
       case GestureType.longPress:
-        return Icons.pan_tool;
+      if (statusPage == 1) {
+          return Icons.check_circle;
+        } else{
+          return Icons.clean_hands;
+        }
       case GestureType.shake:
         return Icons.vibration;
       default:
@@ -289,4 +302,5 @@ enum GestureType {
   doubleTap,
   longPress,
   shake,
+  check,
 }
